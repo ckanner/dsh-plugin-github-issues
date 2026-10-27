@@ -12,12 +12,16 @@
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { mergePrefs, type Prefs } from '../vm.ts'
+import { mergePrefs, type IssueLinkRecord, type IssueSessionLinkVM, type Prefs } from '../vm.ts'
+
+/** How many links one installation keeps; older handoffs fall off the tail. */
+const MAX_LINKS = 500
 
 /** What the state file holds. */
 interface StateFile {
-  version: 1
+  version: 2
   prefs: Prefs
+  links: IssueLinkRecord[]
 }
 
 /** Clamp one untrusted patch value to a known preference list. */
@@ -79,6 +83,7 @@ export class PrefsStore {
   private readonly file: string
   private readonly directory: string
   private cached: Prefs | undefined
+  private cachedLinks: IssueLinkRecord[] | undefined
 
   /**
    * @param stateDir - owner-only directory this installation's state lives in.
@@ -96,31 +101,93 @@ export class PrefsStore {
   /** Read the current preferences, creating defaults on first use. */
   load(): Prefs {
     if (this.cached !== undefined) return this.cached
-    let saved: Partial<Prefs> | undefined
-    try {
-      const parsed = JSON.parse(readFileSync(this.file, 'utf8')) as Partial<StateFile>
-      if (parsed.version === 1 && typeof parsed.prefs === 'object' && parsed.prefs !== null) saved = parsed.prefs
-    } catch {
-      // No state yet, or it became unreadable: defaults are the honest answer.
-    }
+    const saved = this.readFile()?.prefs
     this.cached = mergePrefs(saved, this.configureHandoff, this.configureTemplate)
     return this.cached
+  }
+
+  /** Every recorded issue → session link, oldest first. */
+  links(): IssueLinkRecord[] {
+    if (this.cachedLinks !== undefined) return this.cachedLinks
+    const links = this.readFile()?.links
+    this.cachedLinks = Array.isArray(links)
+      ? links.filter((link): link is IssueLinkRecord => {
+        if (typeof link !== 'object' || link === null) return false
+        const record = link as Partial<IssueLinkRecord>
+        return typeof record.repo === 'string' && typeof record.number === 'number'
+          && typeof record.sessionId === 'string' && typeof record.at === 'number'
+      })
+      : []
+    return this.cachedLinks
+  }
+
+  /** The links recorded for one issue, newest last. */
+  linksFor(repo: string, number: number): IssueSessionLinkVM[] {
+    return this.links()
+      .filter(link => link.repo === repo && link.number === number)
+      .map(link => ({ sessionId: link.sessionId, at: link.at }))
+  }
+
+  /** Record one issue → session handoff, idempotently. */
+  link(repo: string, number: number, sessionId: string): IssueLinkRecord[] {
+    const existing = this.links()
+    const already = existing.some(link => link.repo === repo && link.number === number && link.sessionId === sessionId)
+    if (already) return existing
+    const next = [...existing, { repo, number, sessionId, at: Date.now() }].slice(-MAX_LINKS)
+    this.cachedLinks = next
+    this.writeFile(next)
+    return next
+  }
+
+  /** Remove one link (or every link for the issue when `sessionId` is omitted). */
+  unlink(repo: string, number: number, sessionId?: string): IssueLinkRecord[] {
+    const next = this.links().filter(link => {
+      if (link.repo !== repo || link.number !== number) return true
+      return sessionId === undefined ? false : link.sessionId !== sessionId
+    })
+    this.cachedLinks = next
+    this.writeFile(next)
+    return next
+  }
+
+  /** Read the state file once, tolerating absence, v1 files, and corruption. */
+  private readFile(): { prefs?: Partial<Prefs>; links?: unknown } | undefined {
+    try {
+      const parsed = JSON.parse(readFileSync(this.file, 'utf8')) as {
+        version?: unknown
+        prefs?: unknown
+        links?: unknown
+      }
+      if (typeof parsed !== 'object' || parsed === null) return undefined
+      if (parsed.version !== 1 && parsed.version !== 2) return undefined
+      const prefs = typeof parsed.prefs === 'object' && parsed.prefs !== null
+        ? parsed.prefs as Partial<Prefs>
+        : undefined
+      return { ...prefs === undefined ? {} : { prefs }, links: parsed.links }
+    } catch {
+      return undefined
+    }
   }
 
   /** Merge one patch into the stored preferences and persist them. */
   save(patch: unknown): Prefs {
     const next = applyPrefsPatch(this.load(), patch)
     this.cached = next
+    this.writeFile(this.links())
+    return next
+  }
+
+  /** Write the whole state document atomically with owner-only permissions. */
+  private writeFile(links: IssueLinkRecord[]): void {
     mkdirSync(this.directory, { recursive: true, mode: 0o700 })
     try {
       chmodSync(this.directory, 0o700)
     } catch {
       // A pre-existing directory may not be ours to chmod; the write still works.
     }
-    const text = `${JSON.stringify({ version: 1, prefs: next } satisfies StateFile, null, 2)}\n`
+    const text = `${JSON.stringify({ version: 2, prefs: this.cached ?? this.load(), links } satisfies StateFile, null, 2)}\n`
     const temporary = `${this.file}.tmp-${String(process.pid)}`
     writeFileSync(temporary, text, { mode: 0o600 })
     renameSync(temporary, this.file)
-    return next
   }
 }

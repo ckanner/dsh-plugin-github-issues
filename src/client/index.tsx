@@ -50,7 +50,7 @@ export function apply(ctx: ClientContext): void {
     name: 'main',
     key: PANEL_ID,
     locale: NS,
-    inject: () => ({ store, t }),
+    inject: () => ({ store, t, ctx }),
   }, PageHost))
 
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
@@ -70,7 +70,7 @@ export function apply(ctx: ClientContext): void {
     id: 'github-issues-handoff',
     order: 30,
     locale: NS,
-    inject: () => ({ store, t }),
+    inject: () => ({ store, t, ctx }),
   }, DockHost))
 
   ctx.slots.inject('settings.section', () => ctx.slots.register({

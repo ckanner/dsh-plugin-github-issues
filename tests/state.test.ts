@@ -88,7 +88,7 @@ test('saving creates an owner-only directory, a 0600 file, and survives reload',
     const mode = statSync(file).mode & 0o777
     assert.equal(mode, 0o600, `expected 0600, got ${mode.toString(8)}`)
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as { version: number; prefs: { state: string } }
-    assert.equal(parsed.version, 1)
+    assert.equal(parsed.version, 2)
     assert.equal(parsed.prefs.state, 'closed')
 
     const reloaded = new PrefsStore(dir, undefined, undefined)
@@ -109,6 +109,36 @@ test('a corrupt state file falls back to defaults instead of throwing', () => {
     writeFileSync(join(dir, 'state.json'), '{not json', 'utf8')
     const reloaded = new PrefsStore(dir, undefined, undefined)
     assert.equal(reloaded.load().assignee, DEFAULT_PREFS.assignee)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('issue → session links persist, dedupe, and unlink', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-github-issues-'))
+  try {
+    const store = new PrefsStore(dir, undefined, undefined)
+    store.link('one2x-ai/mesh', 2469, 'session-a')
+    store.link('one2x-ai/mesh', 2469, 'session-a')
+    store.link('one2x-ai/mesh', 2469, 'session-b')
+    store.link('cli/cli', 14800, 'session-a')
+    const reloaded = new PrefsStore(dir, undefined, undefined)
+    assert.deepEqual(
+      reloaded.linksFor('one2x-ai/mesh', 2469).map(link => link.sessionId),
+      ['session-a', 'session-b'],
+    )
+    const firstLink = reloaded.linksFor('one2x-ai/mesh', 2469)[0]
+    assert.ok(firstLink !== undefined && firstLink.at > 0)
+
+    reloaded.unlink('one2x-ai/mesh', 2469, 'session-a')
+    const afterOne = new PrefsStore(dir, undefined, undefined)
+    assert.deepEqual(afterOne.linksFor('one2x-ai/mesh', 2469).map(link => link.sessionId), ['session-b'])
+
+    afterOne.unlink('one2x-ai/mesh', 2469)
+    const afterAll = new PrefsStore(dir, undefined, undefined)
+    assert.deepEqual(afterAll.linksFor('one2x-ai/mesh', 2469), [])
+    assert.equal(afterAll.linksFor('cli/cli', 14800).length, 1, 'other issues keep their links')
+    assert.equal(afterAll.load().assignee, DEFAULT_PREFS.assignee, 'prefs survive link writes')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

@@ -136,6 +136,34 @@ export interface InputState {
   attachmentIds: readonly string[]
 }
 
+/** The Session catalog the sidebar and schedule plugins project from. */
+export interface SessionsSnapshot {
+  phase?: string
+  ids?: readonly string[]
+  byId?: Record<string, { title?: string | null } | undefined>
+}
+
+/** One workspace entry in the workspace catalog. */
+export interface WorkspaceEntrySnapshot {
+  workspaceId?: string
+  title?: string | null
+  sessionIds?: readonly string[]
+}
+
+/** The workspace catalog snapshot. */
+export interface WorkspacesSnapshot {
+  phase?: string
+  state?: string
+  items?: readonly WorkspaceEntrySnapshot[]
+  archivedSessionIds?: readonly string[]
+}
+
+/** A snapshot source that can be subscribed to. */
+export interface SnapshotSource<T> {
+  getSnapshot(): T
+  subscribe(listener: () => void): () => void
+}
+
 /** The client plugin context. */
 export interface ClientContext {
   /** Read one service by key (used for the plugin's own Remote namespace). */
@@ -152,6 +180,9 @@ export interface ClientContext {
   layout?: LayoutService
   uiWorkspace?: UiWorkspaceService
   sessions?: SessionsService
+  /** Session and workspace catalogs, projected for the panel's session badges. */
+  sessionCatalog?: SnapshotSource<SessionsSnapshot>
+  workspaceCatalog?: SnapshotSource<WorkspacesSnapshot>
 }
 
 /** The standard session props a `scope: session` slot component receives. */

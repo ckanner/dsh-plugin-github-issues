@@ -10,8 +10,8 @@
 
 import type { InputActions, Translate } from './context.ts'
 import type {
-  GitHubStatus, IssueCardVM, IssueDetailVM, IssueListPage, ProjectRefVM, Prefs, RepoPageVM,
-  ScopeCatalog,
+  GitHubStatus, IssueCardVM, IssueDetailVM, IssueLinkRecord, IssueListPage, ProjectRefVM, Prefs,
+  RepoPageVM, ScopeCatalog,
 } from '../vm.ts'
 
 /** One panel error, in a shape the renderer can display. */
@@ -50,6 +50,31 @@ export interface PanelSnapshot {
   /** True when Projects v2 is unavailable because of the missing scope. */
   projectsBlocked: boolean
   projectsError?: string | undefined
+  /** Every recorded issue → session link. */
+  links: IssueLinkRecord[]
+  /** Linked issues resolved to cards, keyed `owner/repo#number`. */
+  linkCards: Record<string, IssueCardVM>
+}
+
+/** One session an issue has been handed to, resolved for display. */
+export interface SessionLinkView {
+  sessionId: string
+  title: string
+  workspaceTitle?: string
+  /** False when the Session no longer exists or is archived. */
+  available: boolean
+  /** Milliseconds since epoch, or `undefined` for an unresolved link. */
+  at?: number
+}
+
+/** One chip the composer area renders for a session. */
+export interface ComposerIssueChip {
+  /** The issue, when its card has been resolved. */
+  card: IssueCardVM
+  /** `draft` while the prompt is only staged, `linked` once the handoff recorded. */
+  state: 'draft' | 'linked'
+  /** The resolved session links (empty for a draft chip). */
+  sessions: SessionLinkView[]
 }
 
 /** Everything the renderers may ask the store to do. */
@@ -90,6 +115,12 @@ export interface PanelActions {
   loadCatalog(): void
   /** Clear the transient toast. */
   clearToast(): void
+  /** Open (navigate to) one Session. */
+  openSession(sessionId: string): void
+  /** Remove one issue → session link. */
+  unlinkSession(card: IssueCardVM, sessionId?: string): void
+  /** Open the GitHub panel focused on one issue. */
+  openInPanel(card: IssueCardVM): void
 }
 
 /** Props of the full-page panel. */
@@ -97,6 +128,8 @@ export interface PageProps {
   snapshot: PanelSnapshot
   actions: PanelActions
   t: Translate
+  /** Resolve one session id to its current title/workspace. */
+  resolveSession: (sessionId: string) => SessionLinkView
 }
 
 /** Props of the composer dock strip. */
@@ -114,6 +147,12 @@ export interface DockProps extends PageProps {
   onDropIssue(card: IssueCardVM): void
   /** Accept a dropped plain-text payload (e.g. an issue brief from elsewhere). */
   onDropText(text: string): void
+  /** Chips this session renders above the composer. */
+  chips: ComposerIssueChip[]
+  /** Remove a draft chip or unlink a linked chip from this session. */
+  onRemoveChip(chip: ComposerIssueChip): void
+  /** Open the GitHub panel focused on a chip's issue. */
+  onOpenChip(chip: ComposerIssueChip): void
 }
 
 /** Props of the settings page section. */

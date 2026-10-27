@@ -195,6 +195,9 @@ assert.deepEqual(
     'githubIssues/loadPrefs',
     'githubIssues/savePrefs',
     'githubIssues/refresh',
+    'githubIssues/links',
+    'githubIssues/linkIssue',
+    'githubIssues/unlinkIssue',
   ],
   'every method the browser calls must be mounted, or the call fails at the click',
 )

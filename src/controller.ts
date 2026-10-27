@@ -18,7 +18,8 @@ import type { GitHubApi, GitHubApiOptions, GhProbe, ResolvedAuth } from './githu
 import { GitHubApiError } from './github/types.ts'
 import type { PrefsStore } from './github/state.ts'
 import type {
-  GitHubStatus, IssueDetailVM, IssueListPage, Prefs, ProjectRefVM, RepoPageVM, ScopeCatalog,
+  GitHubStatus, IssueCardVM, IssueDetailVM, IssueLinkRecord, IssueListPage, Prefs,
+  ProjectRefVM, RepoPageVM, ScopeCatalog,
 } from './vm.ts'
 
 /** How long one resolved token is reused before asking `gh` again. */
@@ -185,10 +186,17 @@ export class GitHubIssuesController extends TypertRemoteService {
     return await this.withApi(api => api.scopes())
   }
 
+  /** Attach the recorded session links to one card. */
+  private decorate<T extends IssueCardVM>(card: T): T {
+    const links = this.options.prefs.linksFor(card.repo, card.number)
+    return links.length === 0 ? card : { ...card, sessionLinks: links }
+  }
+
   /** One page of the list. */
   @Remote
   async listIssues(request: unknown): Promise<IssueListPage> {
-    return await this.withApi(api => api.listIssues(normalizeRequest(request)))
+    const page = await this.withApi(api => api.listIssues(normalizeRequest(request)))
+    return { ...page, items: page.items.map(card => this.decorate(card)) }
   }
 
   /** Projects v2 of one organization; empty and `blocked` without `read:project`. */
@@ -206,7 +214,28 @@ export class GitHubIssuesController extends TypertRemoteService {
   /** One issue with body and linked PRs. */
   @Remote
   async issueDetail(repo: string, number: number): Promise<IssueDetailVM> {
-    return await this.withApi(api => api.issueDetail(repo, number))
+    return this.decorate(await this.withApi(api => api.issueDetail(repo, number)))
+  }
+
+  /** Every recorded issue → session link (the dock resolves its own session). */
+  @Remote
+  async links(): Promise<IssueLinkRecord[]> {
+    return this.options.prefs.links()
+  }
+
+  /** Record that an issue was handed to one session. */
+  @Remote
+  async linkIssue(repo: string, number: number, sessionId: string): Promise<IssueLinkRecord[]> {
+    if (typeof repo !== 'string' || repo === '' || !Number.isInteger(number) || number <= 0 || typeof sessionId !== 'string' || sessionId === '') {
+      throw new Error('linkIssue: repo, a positive number, and sessionId are required')
+    }
+    return this.options.prefs.link(repo, number, sessionId)
+  }
+
+  /** Remove one issue → session link, or all links of the issue. */
+  @Remote
+  async unlinkIssue(repo: string, number: number, sessionId?: string): Promise<IssueLinkRecord[]> {
+    return this.options.prefs.unlink(repo, number, sessionId)
   }
 
   /** Preferences persisted on the Host. */

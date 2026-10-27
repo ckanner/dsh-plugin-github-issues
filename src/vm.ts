@@ -112,6 +112,8 @@ export interface IssueCardVM {
   linkedPRs: LinkedPRVM[]
   /** Projects v2 Status value, when the card came from a project view. */
   projectStatus?: ProjectFieldValueVM
+  /** Sessions this issue has been handed to (newest last). */
+  sessionLinks?: IssueSessionLinkVM[]
 }
 
 /** One issue's full detail. */
@@ -119,6 +121,21 @@ export interface IssueDetailVM extends IssueCardVM {
   body: string
   /** PRs that mention this issue without closing it (`timelineItems` cross-references). */
   mentionedPRs: LinkedPRVM[]
+}
+
+/** One Session this issue has been handed to. */
+export interface IssueSessionLinkVM {
+  sessionId: string
+  /** Milliseconds since epoch when the handoff was recorded. */
+  at: number
+}
+
+/** One persisted issue → session link. */
+export interface IssueLinkRecord {
+  repo: string
+  number: number
+  sessionId: string
+  at: number
 }
 
 /** One page of the list. */

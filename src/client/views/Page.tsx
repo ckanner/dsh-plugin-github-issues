@@ -180,7 +180,7 @@ function ScopeCombo(props: {
  * @param props - the panel snapshot, actions, and translate function.
  * @returns the scrollable page.
  */
-export function GitHubPage({ snapshot, actions, t }: PageProps) {
+export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) {
   const [filter, setFilter] = useState('')
   const prefs = snapshot.prefs
 
@@ -407,7 +407,7 @@ export function GitHubPage({ snapshot, actions, t }: PageProps) {
             )}
           </div>
 
-          {split && <IssueDetailPane snapshot={snapshot} actions={actions} t={t} />}
+          {split && <IssueDetailPane snapshot={snapshot} actions={actions} t={t} resolveSession={resolveSession} />}
         </div>
       </div>
 

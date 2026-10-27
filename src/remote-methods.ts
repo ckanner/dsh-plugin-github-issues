@@ -37,6 +37,9 @@ export const REMOTE_METHODS: readonly RemoteMethod[] = [
   { method: 'loadPrefs', parameters: [] },
   { method: 'savePrefs', parameters: [{ wire: 'patch' }] },
   { method: 'refresh', parameters: [] },
+  { method: 'links', parameters: [] },
+  { method: 'linkIssue', parameters: [{ wire: 'repo' }, { wire: 'number' }, { wire: 'sessionId' }] },
+  { method: 'unlinkIssue', parameters: [{ wire: 'repo' }, { wire: 'number' }, { wire: 'sessionId', optional: true }] },
 ]
 
 /** The Cordis service key the controller registers, and the descriptor's `service` field. */

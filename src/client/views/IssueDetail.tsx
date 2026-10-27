@@ -134,7 +134,7 @@ function DetailFooter({ commentCount, updatedAt, t }: FooterProps) {
  * @param props - the panel snapshot, actions, and translate function.
  * @returns the pane, or `null` when no issue is selected.
  */
-export function IssueDetailPane({ snapshot, actions, t }: PageProps) {
+export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PageProps) {
   const card = snapshot.detail ?? snapshot.selected
   if (card === undefined) return null
 
@@ -145,6 +145,7 @@ export function IssueDetailPane({ snapshot, actions, t }: PageProps) {
   const showHint = detail === undefined && !snapshot.detailLoading && error === undefined
   const tone = stateTone(card.state, card.stateReason)
   const body = detail?.body !== undefined && detail.body !== '' ? detail.body : detail?.bodyExcerpt
+  const sessionLinks = card.sessionLinks ?? []
 
   return (
     <aside className="ghx-pane" aria-label={t('panel.detail')}>
@@ -179,12 +180,52 @@ export function IssueDetailPane({ snapshot, actions, t }: PageProps) {
           <CopyGlyph size={12} />
           {t('panel.copyPrompt')}
         </Button>
-        <Button size="sm" variant="primary" onClick={() => actions.handoff(card)}>{t('panel.handoff')}</Button>
-        <Button size="sm" variant="ghost" onClick={() => actions.pin(card)}>
-          <PinGlyph size={12} />
-          {t('panel.pin')}
-        </Button>
+        {sessionLinks.length === 0
+          ? (
+            <Button size="sm" variant="primary" onClick={() => actions.handoff(card)}>
+              {t('panel.handToAgent')}
+            </Button>
+          )
+          : (
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => actions.openSession(sessionLinks[sessionLinks.length - 1]?.sessionId ?? '')}
+            >
+              {t('panel.openSession')}
+            </Button>
+          )}
       </div>
+
+      <section className="ghx-section">
+        <h3 className="ghx-section-title">{t('panel.sessions')}</h3>
+        {sessionLinks.length === 0
+          ? <div className="ghx-muted">{t('panel.noSession')}</div>
+          : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {sessionLinks.map(link => {
+                const view = resolveSession(link.sessionId)
+                return (
+                  <div key={link.sessionId} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <span className="ghx-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {view.workspaceTitle === undefined ? view.title : `${view.workspaceTitle} / ${view.title}`}
+                    </span>
+                    {view.available
+                      ? (
+                        <Button size="sm" variant="outline" onClick={() => actions.openSession(link.sessionId)}>
+                          {view.title === link.sessionId ? t('panel.openSession') : t('panel.openSessionNamed', { title: view.title })}
+                        </Button>
+                      )
+                      : <span className="ghx-muted">{t('panel.sessionMissing')}</span>}
+                    <Button size="sm" variant="ghost" onClick={() => actions.unlinkSession(card, link.sessionId)}>
+                      {t('panel.close')}
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+      </section>
 
       {detailFailed && error !== undefined && (
         <ErrorBanner

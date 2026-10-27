@@ -16,8 +16,9 @@
 import { renderPrompt } from '../prompt.ts'
 import { REMOTE_NAMESPACE } from '../remote-methods.ts'
 import {
-  DEFAULT_PREFS, type GitHubStatus, type IssueCardVM, type IssueDetailVM, type IssueListPage,
-  type IssueListRequest, type Prefs, type ProjectRefVM, type RepoPageVM, type ScopeCatalog,
+  DEFAULT_PREFS, type GitHubStatus, type IssueCardVM, type IssueDetailVM, type IssueLinkRecord,
+  type IssueListPage, type IssueListRequest, type Prefs, type ProjectRefVM, type RepoPageVM,
+  type ScopeCatalog,
 } from '../vm.ts'
 import type { ClientContext } from './context.ts'
 import { RemoteRefusal, unwrap, type RemoteResult } from './result.ts'
@@ -46,6 +47,9 @@ interface RemoteApi {
   loadPrefs(): Promise<RemoteResult<Prefs>>
   savePrefs(patch: Partial<Prefs>): Promise<RemoteResult<Prefs>>
   refresh(): Promise<RemoteResult<{ ok: true }>>
+  links(): Promise<RemoteResult<IssueLinkRecord[]>>
+  linkIssue(repo: string, number: number, sessionId: string): Promise<RemoteResult<IssueLinkRecord[]>>
+  unlinkIssue(repo: string, number: number, sessionId?: string): Promise<RemoteResult<IssueLinkRecord[]>>
 }
 
 /** One organization's lazily loaded scope lists. */
@@ -86,6 +90,8 @@ export class GitHubStore implements PanelActions {
     detailLoading: false,
     prefs: DEFAULT_PREFS,
     projectsBlocked: false,
+    links: [],
+    linkCards: {},
   }
 
   private readonly listeners = new Set<() => void>()
@@ -145,6 +151,7 @@ export class GitHubStore implements PanelActions {
         loading: false,
       })
       void this.loadCatalog()
+      void this.loadLinks()
       if (prefs.org !== undefined) void this.loadOrgScope(prefs.org)
       await this.reloadList()
       this.schedulePolling(status.config.pollSeconds)
@@ -460,6 +467,134 @@ export class GitHubStore implements PanelActions {
     if (this.toastTimer !== undefined) clearTimeout(this.toastTimer)
     this.toastTimer = undefined
     this.update({ toast: undefined })
+  }
+
+  /** The issue key used by the link map. */
+  private keyOf(repo: string, number: number): string {
+    return `${repo}#${String(number)}`
+  }
+
+  /** Load every recorded link and resolve the linked issues to cards. */
+  async loadLinks(): Promise<void> {
+    try {
+      const remote = await this.api()
+      const links = await remote.links().then(result => unwrap(result))
+      this.update({ links })
+      this.decorateLoadedCards(links)
+      void this.ensureCards(links)
+    } catch {
+      // The dock simply shows no chips when links cannot be read.
+    }
+  }
+
+  /** Fetch the cards of linked issues that are not in the current list yet. */
+  async ensureCards(links: readonly IssueLinkRecord[]): Promise<void> {
+    const missing = new Map<string, { repo: string; number: number }>()
+    for (const link of links) {
+      const key = this.keyOf(link.repo, link.number)
+      if (this.snapshot.linkCards[key] !== undefined) continue
+      missing.set(key, { repo: link.repo, number: link.number })
+    }
+    if (missing.size === 0) return
+    try {
+      const remote = await this.api()
+      const cards: Record<string, IssueCardVM> = {}
+      for (const [key, target] of [...missing.entries()].slice(0, 10)) {
+        try {
+          const detail = await remote.issueDetail(target.repo, target.number).then(result => unwrap(result))
+          cards[key] = detail
+        } catch {
+          // A deleted or inaccessible issue just has no chip.
+        }
+      }
+      if (Object.keys(cards).length === 0) return
+      this.update({ linkCards: { ...this.snapshot.linkCards, ...cards } })
+    } catch {
+      // ignore: chips appear once the list or a later load resolves the card
+    }
+  }
+
+  /** Attach resolved session links to every card the snapshot currently holds. */
+  private decorateLoadedCards(links: readonly IssueLinkRecord[]): void {
+    const byKey = new Map<string, IssueLinkRecord[]>()
+    for (const link of links) {
+      const key = this.keyOf(link.repo, link.number)
+      byKey.set(key, [...byKey.get(key) ?? [], link])
+    }
+    const decorate = <T extends IssueCardVM>(card: T): T => {
+      const records = byKey.get(this.keyOf(card.repo, card.number))
+      if (records === undefined) return card
+      return {
+        ...card,
+        sessionLinks: records.map(record => ({ sessionId: record.sessionId, at: record.at })),
+      }
+    }
+    const list = this.snapshot.list
+    this.update({
+      ...list === undefined ? {} : {
+        list: { ...list, items: list.items.map(card => decorate(card)) },
+      },
+      ...this.snapshot.selected === undefined ? {} : { selected: decorate(this.snapshot.selected) },
+      ...this.snapshot.detail === undefined ? {} : { detail: decorate(this.snapshot.detail) },
+      ...this.snapshot.pinnedCard === undefined ? {} : { pinnedCard: decorate(this.snapshot.pinnedCard) },
+    })
+  }
+
+  /** Record that a session received this issue (send confirmed). */
+  async linkIssue(card: IssueCardVM, sessionId: string): Promise<void> {
+    try {
+      const remote = await this.api()
+      const links = await remote.linkIssue(card.repo, card.number, sessionId).then(result => unwrap(result))
+      this.update({
+        links,
+        linkCards: { ...this.snapshot.linkCards, [this.keyOf(card.repo, card.number)]: card },
+      })
+      this.decorateLoadedCards(links)
+    } catch {
+      // A failed link is not worth an error banner; the chip stays a draft.
+    }
+  }
+
+  /** Remove one issue → session link (or every link of the issue). */
+  async unlinkSession(card: IssueCardVM, sessionId?: string): Promise<void> {
+    try {
+      const remote = await this.api()
+      const links = await remote.unlinkIssue(card.repo, card.number, sessionId).then(result => unwrap(result))
+      this.update({ links })
+      const without = <T extends IssueCardVM>(target: T): T => {
+        const remaining = (target.sessionLinks ?? []).filter(link => sessionId === undefined || link.sessionId !== sessionId)
+        return { ...target, sessionLinks: remaining }
+      }
+      const list = this.snapshot.list
+      this.update({
+        ...list === undefined ? {} : { list: { ...list, items: list.items.map(card2 => without(card2)) } },
+        ...this.snapshot.selected === undefined ? {} : { selected: without(this.snapshot.selected) },
+        ...this.snapshot.detail === undefined ? {} : { detail: without(this.snapshot.detail) },
+        ...this.snapshot.pinnedCard === undefined ? {} : { pinnedCard: without(this.snapshot.pinnedCard) },
+      })
+    } catch (error) {
+      this.update({ error: asPanelError(error) })
+    }
+  }
+
+  /** Open (navigate to) one Session. */
+  openSession(sessionId: string): void {
+    this.ctx.uiWorkspace?.openSession(sessionId)
+  }
+
+  /** Open the GitHub panel focused on one issue. */
+  openInPanel(card: IssueCardVM): void {
+    this.update({ selected: card, detail: undefined, detailLoading: true })
+    this.ctx.layout?.selectPanel('github')
+    void (async () => {
+      try {
+        const remote = await this.api()
+        const detail = await remote.issueDetail(card.repo, card.number).then(result => unwrap(result))
+        this.update({ detail, detailLoading: false })
+      } catch (error) {
+        this.update({ detailLoading: false, error: asPanelError(error) })
+      }
+    })()
   }
 
   /** Take the pending handoff, if any. Exactly one caller receives it. */
