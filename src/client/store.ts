@@ -6,6 +6,10 @@
  * owns every call into the Host Remote namespace and every poll timer, so the
  * renderers stay pure and the data flow is reviewable in one file.
  *
+ * The list is one cascade: organization → (project | repository) → assignee →
+ * state. `Prefs` is the single source of truth for that cascade, so the same
+ * filter comes back after a restart and the pickers survive navigation.
+ *
  * @module dsh-plugin-github-issues/client/store
  */
 
@@ -13,7 +17,7 @@ import { renderPrompt } from '../prompt.ts'
 import { REMOTE_NAMESPACE } from '../remote-methods.ts'
 import {
   DEFAULT_PREFS, type GitHubStatus, type IssueCardVM, type IssueDetailVM, type IssueListPage,
-  type IssueListRequest, type Prefs, type ScopeCatalog,
+  type IssueListRequest, type Prefs, type ProjectRefVM, type RepoPageVM, type ScopeCatalog,
 } from '../vm.ts'
 import type { ClientContext } from './context.ts'
 import { RemoteRefusal, unwrap, type RemoteResult } from './result.ts'
@@ -35,11 +39,21 @@ const TOAST_MS = 2_500
 interface RemoteApi {
   status(): Promise<RemoteResult<GitHubStatus>>
   catalog(): Promise<RemoteResult<ScopeCatalog>>
+  orgProjects(org: string): Promise<RemoteResult<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }>>
+  orgRepos(org: string): Promise<RemoteResult<RepoPageVM>>
   listIssues(request: IssueListRequest): Promise<RemoteResult<IssueListPage>>
   issueDetail(repo: string, number: number): Promise<RemoteResult<IssueDetailVM>>
   loadPrefs(): Promise<RemoteResult<Prefs>>
   savePrefs(patch: Partial<Prefs>): Promise<RemoteResult<Prefs>>
   refresh(): Promise<RemoteResult<{ ok: true }>>
+}
+
+/** One organization's lazily loaded scope lists. */
+interface OrgScope {
+  projects: ProjectRefVM[]
+  repos: RepoPageVM
+  blocked: boolean
+  error?: string
 }
 
 /** One uniform error for the panel. */
@@ -68,27 +82,26 @@ export class GitHubStore implements PanelActions {
   private snapshot: PanelSnapshot = {
     loading: false,
     loadingMore: false,
+    scopeLoading: false,
     detailLoading: false,
     prefs: DEFAULT_PREFS,
     projectsBlocked: false,
   }
 
   private readonly listeners = new Set<() => void>()
+  private readonly orgScopes = new Map<string, OrgScope>()
   private remote: RemoteApi | undefined
   private started = false
   private pollTimer: ReturnType<typeof setInterval> | undefined
   private toastTimer: ReturnType<typeof setTimeout> | undefined
   private listSeq = 0
-  private remoteError: string | undefined
 
   /**
    * @param ctx - the browser plugin context.
    * @param mounting - settles when the hand-written Remote namespace is mounted.
    */
   constructor(private readonly ctx: ClientContext, private readonly mounting: Promise<string | undefined>) {
-    void mounting.then(refused => {
-      if (refused !== undefined) this.remoteError = `the GitHub service could not be mounted: ${refused}`
-    })
+    void mounting.then(() => undefined)
   }
 
   /** Subscribe one renderer to state changes. */
@@ -116,7 +129,7 @@ export class GitHubStore implements PanelActions {
     this.toastTimer = undefined
   }
 
-  /** Load prefs, auth facts, the catalog, and the first list page. */
+  /** Load prefs, auth facts, the catalog, the saved scope, and the first page. */
   private async bootstrap(): Promise<void> {
     this.update({ loading: true, error: undefined })
     try {
@@ -132,6 +145,7 @@ export class GitHubStore implements PanelActions {
         loading: false,
       })
       void this.loadCatalog()
+      if (prefs.org !== undefined) void this.loadOrgScope(prefs.org)
       await this.reloadList()
       this.schedulePolling(status.config.pollSeconds)
       void this.hydratePinned()
@@ -173,18 +187,22 @@ export class GitHubStore implements PanelActions {
     this.toastTimer = setTimeout(() => { this.update({ toast: undefined }) }, TOAST_MS)
   }
 
-  /** Build the list request the current preferences describe. */
+  /** Build the list request the current cascade describes. */
   private request(after: string | null): IssueListRequest {
     const prefs = this.snapshot.prefs
-    const base: IssueListRequest = { view: prefs.view, state: prefs.state, first: 30, after }
-    if (prefs.view === 'repo' && prefs.repo !== undefined) return { ...base, repos: [prefs.repo] }
-    if (prefs.view === 'project' && prefs.projectId !== undefined) {
-      return { ...base, projectId: prefs.projectId, ...prefs.org === undefined ? {} : { org: prefs.org } }
+    const request: IssueListRequest = {
+      state: prefs.state,
+      assignee: prefs.assignee,
+      first: 30,
+      after,
     }
-    return base
+    if (prefs.org !== undefined) request.org = prefs.org
+    if (prefs.projectId !== undefined) request.projectId = prefs.projectId
+    if (prefs.repo !== undefined) request.repos = [prefs.repo]
+    return request
   }
 
-  /** Fetch the first page of the current view. */
+  /** Fetch the first page of the current cascade. */
   private async reloadList(quiet = false): Promise<void> {
     const seq = ++this.listSeq
     if (!quiet) this.update({ loading: true, error: undefined })
@@ -197,11 +215,6 @@ export class GitHubStore implements PanelActions {
         loading: false,
         loadingMore: false,
         error: undefined,
-        // `projectsBlocked` is an authorization fact (status + catalog), never a
-        // list notice: an empty project view legitimately carries "select a
-        // project" as its notice, and polling must not turn that into a scope
-        // warning.
-        projectsBlocked: this.snapshot.projectsBlocked,
       })
       this.refreshPinnedCard()
     } catch (error) {
@@ -210,7 +223,7 @@ export class GitHubStore implements PanelActions {
     }
   }
 
-  /** Load the repository/project pickers lazily. */
+  /** Load the viewer/organization catalog once. */
   async loadCatalog(): Promise<void> {
     if (this.snapshot.catalog !== undefined) return
     try {
@@ -222,6 +235,48 @@ export class GitHubStore implements PanelActions {
       })
     } catch (error) {
       this.update({ error: asPanelError(error) })
+    }
+  }
+
+  /**
+   * Load the projects and repositories of one organization, once per session.
+   * A Projects v2 permission failure degrades to `projectsBlocked` while the
+   * repository list still works.
+   */
+  private async loadOrgScope(org: string): Promise<void> {
+    const cached = this.orgScopes.get(org)
+    if (cached !== undefined) {
+      this.update({
+        orgProjects: cached.projects,
+        orgRepos: cached.repos,
+        projectsBlocked: cached.blocked || this.snapshot.status?.missingProjectScope === true,
+        ...cached.error === undefined ? { projectsError: undefined } : { projectsError: cached.error },
+      })
+      return
+    }
+    this.update({ scopeLoading: true })
+    try {
+      const remote = await this.api()
+      const [projects, repos] = await Promise.all([
+        remote.orgProjects(org).then(result => unwrap(result)),
+        remote.orgRepos(org).then(result => unwrap(result)),
+      ])
+      const scope: OrgScope = {
+        projects: projects.projects,
+        repos,
+        blocked: projects.blocked || this.snapshot.status?.missingProjectScope === true,
+        ...projects.error === undefined ? {} : { error: projects.error },
+      }
+      this.orgScopes.set(org, scope)
+      this.update({
+        orgProjects: scope.projects,
+        orgRepos: scope.repos,
+        projectsBlocked: scope.blocked,
+        ...scope.error === undefined ? { projectsError: undefined } : { projectsError: scope.error },
+        scopeLoading: false,
+      })
+    } catch (error) {
+      this.update({ scopeLoading: false, error: asPanelError(error) })
     }
   }
 
@@ -257,15 +312,21 @@ export class GitHubStore implements PanelActions {
         const remote = await this.api()
         await remote.refresh()
         const status = await remote.status().then(result => unwrap(result))
+        this.orgScopes.clear()
         this.update({
           status,
           catalog: undefined,
+          orgProjects: undefined,
+          orgRepos: undefined,
           projectsBlocked: status.missingProjectScope,
+          projectsError: undefined,
         })
       } catch (error) {
         this.update({ error: asPanelError(error) })
         return
       }
+      const org = this.snapshot.prefs.org
+      if (org !== undefined) void this.loadOrgScope(org)
       await this.reloadList()
       void this.loadCatalog()
     })()
@@ -294,16 +355,25 @@ export class GitHubStore implements PanelActions {
     })()
   }
 
-  setView(view: Prefs['view']): void {
-    void this.savePrefs({ view })
+  setOrg(org: string | undefined): void {
+    // A new organization invalidates the project and repository selected inside
+    // the previous one.
+    void this.savePrefs({ org, projectId: undefined, repo: undefined }, async saved => {
+      this.update({ orgProjects: undefined, orgRepos: undefined })
+      if (saved.org !== undefined) await this.loadOrgScope(saved.org)
+    })
+  }
+
+  setProject(projectId: string | undefined): void {
+    void this.savePrefs({ projectId })
   }
 
   setRepo(repo: string | undefined): void {
     void this.savePrefs({ repo })
   }
 
-  setProject(projectId: string | undefined): void {
-    void this.savePrefs({ projectId })
+  setAssignee(assignee: string): void {
+    void this.savePrefs({ assignee })
   }
 
   setStateFilter(state: Prefs['state']): void {
@@ -327,23 +397,25 @@ export class GitHubStore implements PanelActions {
     this.update({ selected: undefined, detail: undefined, detailLoading: false })
   }
 
-  savePrefs(patch: Partial<Prefs>): Promise<void> {
-    return (async () => {
-      try {
-        const remote = await this.api()
-        const saved = await remote.savePrefs(patch).then(result => unwrap(result))
-        const affectsList = ['view', 'repo', 'projectId', 'org', 'state'].some(key => key in patch)
-        this.update({ prefs: saved })
-        if (affectsList) {
-          await this.reloadList()
-          this.refreshPinnedCard()
-        } else if ('handoffMode' in patch || 'promptTemplate' in patch) {
-          this.toast('settings.saved')
-        }
-      } catch (error) {
-        this.update({ error: asPanelError(error) })
+  async savePrefs(
+    patch: Partial<Prefs>,
+    after?: (saved: Prefs) => Promise<void> | void,
+  ): Promise<void> {
+    try {
+      const remote = await this.api()
+      const saved = await remote.savePrefs(patch).then(result => unwrap(result))
+      const affectsList = ['org', 'projectId', 'repo', 'assignee', 'state'].some(key => key in patch)
+      this.update({ prefs: saved })
+      if (affectsList) {
+        await this.reloadList()
+        this.refreshPinnedCard()
+      } else if ('handoffMode' in patch || 'promptTemplate' in patch) {
+        this.toast('settings.saved')
       }
-    })()
+      if (after !== undefined) await after(saved)
+    } catch (error) {
+      this.update({ error: asPanelError(error) })
+    }
   }
 
   pin(card: IssueCardVM): void {

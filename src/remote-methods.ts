@@ -30,6 +30,8 @@ export interface RemoteMethod {
 export const REMOTE_METHODS: readonly RemoteMethod[] = [
   { method: 'status', parameters: [] },
   { method: 'catalog', parameters: [] },
+  { method: 'orgProjects', parameters: [{ wire: 'org' }] },
+  { method: 'orgRepos', parameters: [{ wire: 'org' }] },
   { method: 'listIssues', parameters: [{ wire: 'request' }] },
   { method: 'issueDetail', parameters: [{ wire: 'repo' }, { wire: 'number' }] },
   { method: 'loadPrefs', parameters: [] },

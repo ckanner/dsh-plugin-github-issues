@@ -2,19 +2,19 @@
  * The full-page GitHub Issues panel.
  *
  * One scrollable page, laid out like the shipped management pages: a 960px
- * content column, a draggable header, view tabs, the view's scope picker, a local
- * filter, and the issue list. When a row is selected the list keeps its width and
- * the detail pane opens beside it.
+ * content column, a draggable header, the scope cascade (organization → project →
+ * repository → assignee → state), a local filter, and the issue list. When a row
+ * is selected the list keeps its width and the detail pane opens beside it.
  *
- * The page owns only local UI state (the filter text); every list request and
- * every mutation goes through `PanelActions`.
+ * The page owns only local UI state (the filter text and the repository combobox
+ * input); every list request and every mutation goes through `PanelActions`.
  *
  * @module dsh-plugin-github-issues/client/views/Page
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
-import type { Prefs } from '../../vm.ts'
+import type { IssueCardVM, Prefs } from '../../vm.ts'
 import type { PageProps } from '../viewmodel.ts'
 import {
   Button, CommandBlock, EmptyState, ErrorBanner, IconButton, Select, Spinner, StyleSheet,
@@ -22,7 +22,7 @@ import {
 } from './controls.tsx'
 import { CloseGlyph, GitHubIcon, RefreshGlyph, SearchGlyph } from './Icon.tsx'
 import { IssueDetailPane, ISSUE_DETAIL_CSS } from './IssueDetail.tsx'
-import { IssueRow, ISSUE_ROW_CSS } from './IssueRow.tsx'
+import { ISSUE_ROW_CSS, IssueRow } from './IssueRow.tsx'
 
 /** The page root: fills the panel seat and scrolls on its own. */
 export const PAGE_ROOT_STYLE: CSSProperties = {
@@ -78,13 +78,12 @@ export const PAGE_CSS = `
 .ghp-h1{margin:0;font-size:20px;line-height:28px;font-weight:500;color:var(--dsw-alias-label-primary)}
 .ghp-subtitle{margin-top:2px;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}
 .ghp-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.ghp-tabs{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:18px}
-.ghp-tab{height:28px;padding:0 10px;border:0;border-radius:var(--dsw-radius-lg,14px);background:transparent;color:var(--dsw-alias-label-tertiary);font-family:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;cursor:pointer;white-space:nowrap}
-.ghp-tab:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
-.ghp-tab[aria-selected=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-weight:500}
-.ghp-tab:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}
-.ghp-picker{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
-.ghp-notice{display:flex;flex-direction:column;gap:6px;box-sizing:border-box;width:100%;padding:10px 12px;border:0.5px solid var(--dsw-alias-state-warn-primary);border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-state-warn-tertiary,var(--dsw-alias-bg-layer-1));font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.ghp-scope{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:18px}
+.ghp-scope .gh-select-wrap{min-width:132px;max-width:240px}
+.ghp-combo{display:flex;flex-direction:column;gap:2px;min-width:220px;max-width:320px}
+.ghp-combo .gh-field-label{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary);padding-left:2px}
+.ghp-combo input{height:30px;box-sizing:border-box;padding:0 8px;width:100%}
+.ghp-notice{display:flex;flex-direction:column;gap:6px;box-sizing:border-box;width:100%;padding:10px 12px;border:0.5px solid var(--dsw-alias-state-warn-primary);border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-state-warn-tertiary,var(--dsw-alias-bg-layer-1));font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);margin-top:12px}
 .ghp-filters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0 8px}
 .ghp-search{display:flex;align-items:center;gap:6px;flex:1;min-width:180px;max-width:360px;height:32px;padding:0 4px 0 10px;box-sizing:border-box;border:0.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md,8px);color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-base)}
 .ghp-search:hover{border-color:var(--dsw-alias-border-l2)}
@@ -104,23 +103,76 @@ export const PAGE_CSS = `
 @media (max-width:760px){.ghp-split{flex-direction:column}.ghp-split .ghx-pane{flex:1 1 auto;width:100%;padding-left:0;border-left:0;padding-top:16px;border-top:0.5px solid var(--dsw-alias-border-l2)}}
 `.trim()
 
-/** The ordered view tabs the panel offers. */
-const VIEWS: readonly Prefs['view'][] = ['assigned', 'created', 'open', 'repo', 'project']
-
-/** Locale keys for each view tab label. */
-const VIEW_LABEL: Record<Prefs['view'], string> = {
-  assigned: 'panel.assigned',
-  created: 'panel.created',
-  open: 'panel.open',
-  repo: 'panel.repo',
-  project: 'panel.project',
-}
-
 /** Locale keys for each state filter option. */
 const STATE_LABEL: Record<Prefs['state'], string> = {
   open: 'panel.state.open',
   closed: 'panel.state.closed',
   all: 'panel.state.all',
+}
+
+/** One option a native datalist offers. */
+interface ComboOption {
+  value: string
+  label: string
+}
+
+/**
+ * A searchable picker: a text input backed by a native `<datalist>`.
+ * @param props - label, current selection, options, and the change callback.
+ * @returns the labelled combobox.
+ */
+function ScopeCombo(props: {
+  label: string
+  value: string | undefined
+  placeholder: string
+  options: readonly ComboOption[]
+  disabled?: boolean
+  onChange: (value: string | undefined) => void
+  t: PageProps['t']
+}) {
+  const { label, value, placeholder, options, disabled, onChange, t } = props
+  const listId = useId()
+  const selected = options.find(option => option.value === value)
+  const [text, setText] = useState(selected?.label ?? '')
+
+  // The parent owns the selection: follow it when it changes elsewhere.
+  useEffect(() => {
+    const current = options.find(option => option.value === value)
+    setText(current?.label ?? '')
+  }, [value, options])
+
+  return (
+    <label className="ghp-combo">
+      <span className="gh-field-label">{label}</span>
+      <input
+        className="gh-input"
+        list={listId}
+        value={text}
+        disabled={disabled === true}
+        placeholder={placeholder}
+        aria-label={label}
+        onChange={event => {
+          const next = event.target.value
+          setText(next)
+          if (next === '') {
+            onChange(undefined)
+            return
+          }
+          const match = options.find(option => option.label === next || option.value === next)
+          if (match !== undefined) onChange(match.value)
+        }}
+        onBlur={() => {
+          // A half-typed name reverts to the actual selection.
+          const current = options.find(option => option.value === value)
+          setText(current?.label ?? '')
+        }}
+      />
+      <datalist id={listId}>
+        {options.map(option => <option key={option.value} value={option.label} />)}
+      </datalist>
+      <span className="ghp-muted">{t('panel.comboHint', { count: options.length })}</span>
+    </label>
+  )
 }
 
 /**
@@ -130,14 +182,12 @@ const STATE_LABEL: Record<Prefs['state'], string> = {
  */
 export function GitHubPage({ snapshot, actions, t }: PageProps) {
   const [filter, setFilter] = useState('')
-  const view = snapshot.prefs.view
-  const needsCatalog = view === 'repo' || view === 'project'
+  const prefs = snapshot.prefs
 
-  // The repository/project pickers expand their catalog on first use only.
+  // The viewer/organization catalog expands on first use only.
   useEffect(() => {
-    if (!needsCatalog || snapshot.catalog !== undefined) return
-    actions.loadCatalog()
-  }, [needsCatalog, snapshot.catalog, actions])
+    if (snapshot.catalog === undefined) actions.loadCatalog()
+  }, [snapshot.catalog, actions])
 
   const items = snapshot.list?.items
   const filtered = useMemo(() => {
@@ -155,18 +205,26 @@ export function GitHubPage({ snapshot, actions, t }: PageProps) {
     label: t(STATE_LABEL[state]),
   }))
 
-  const repos = snapshot.catalog?.repos ?? []
-  const repoOptions = [
-    { value: '', label: t('panel.allRepos') },
-    ...repos.map(repo => ({
-      value: repo.nameWithOwner,
-      label: repo.isPrivate ? `${repo.nameWithOwner} · ${t('panel.private')}` : repo.nameWithOwner,
-    })),
+  const orgs = snapshot.catalog?.orgs ?? []
+  const orgOptions = [
+    { value: '', label: t('panel.allOrgs') },
+    ...orgs.map(org => ({ value: org.login, label: org.name === undefined ? org.login : `${org.login} · ${org.name}` })),
   ]
-  const projectOptions = (snapshot.catalog?.projects ?? []).map(project => ({
-    value: project.id,
-    label: `${project.title} · ${project.owner}`,
+  const projectOptions = [
+    { value: '', label: t('panel.allProjects') },
+    ...(snapshot.orgProjects ?? []).map(project => ({ value: project.id, label: project.title })),
+  ]
+  const repoSource = prefs.org === undefined
+    ? (snapshot.catalog?.repos ?? [])
+    : (snapshot.orgRepos?.items ?? [])
+  const repoOptions: ComboOption[] = repoSource.map(repo => ({
+    value: repo.nameWithOwner,
+    label: `${repo.nameWithOwner}${repo.isPrivate ? ` · ${t('panel.private')}` : ''}${repo.isFork === true ? ` · ${t('panel.fork')}` : ''}`,
   }))
+  const assigneeOptions = [
+    { value: '@me', label: t('panel.assignee.me') },
+    { value: 'all', label: t('panel.assignee.all') },
+  ]
 
   const totalCount = snapshot.list?.totalCount
   // The detail pane owns the error while a selected issue's detail is still pending.
@@ -179,6 +237,10 @@ export function GitHubPage({ snapshot, actions, t }: PageProps) {
     ? t('settings.signedIn', { login: snapshot.status.login })
     : snapshot.loading ? t('panel.loading') : ''
   const split = snapshot.selected !== undefined
+  const scopeHint =
+    prefs.org === undefined
+      ? t('panel.scopeGlobal')
+      : `${prefs.org}${prefs.projectId === undefined ? '' : ` · ${t('panel.project')}`}${prefs.repo === undefined ? '' : ` · ${prefs.repo}`}`
 
   return (
     <section className="ghp-page" style={PAGE_ROOT_STYLE} data-github-panel aria-label={t('panel')}>
@@ -187,87 +249,76 @@ export function GitHubPage({ snapshot, actions, t }: PageProps) {
         <header className="ghp-head" style={PAGE_HEAD_STYLE} data-window-drag>
           <div className="ghp-title-block">
             <h1 className="ghp-h1" style={PAGE_H1_STYLE}>{t('panel')}</h1>
-            {subtitle !== '' && <div className="ghp-subtitle" style={PAGE_SUBTITLE_STYLE}>{subtitle}</div>}
+            {(subtitle !== '' || scopeHint !== '') && (
+              <div className="ghp-subtitle" style={PAGE_SUBTITLE_STYLE}>
+                {subtitle}
+                {subtitle !== '' && scopeHint !== '' ? ' · ' : ''}
+                {scopeHint}
+              </div>
+            )}
           </div>
           <div className="ghp-head-actions">
             <Button variant="outline" onClick={() => actions.refresh()} disabled={snapshot.loading}>
               {snapshot.loading ? <Spinner size={12} /> : <RefreshGlyph size={13} />}
               {snapshot.loading ? t('panel.loading') : t('panel.refresh')}
             </Button>
-            <Select
-              ariaLabel={t('panel.stateFilter')}
-              label={t('panel.stateFilter')}
-              value={snapshot.prefs.state}
-              options={stateOptions}
-              onChange={value => actions.setStateFilter(value as Prefs['state'])}
-            />
           </div>
         </header>
 
-        <div className="ghp-tabs" role="tablist" aria-label={t('panel.view')}>
-          {VIEWS.map(candidate => (
-            <button
-              key={candidate}
-              type="button"
-              role="tab"
-              className="ghp-tab"
-              aria-selected={view === candidate}
-              onClick={() => actions.setView(candidate)}
-            >
-              {t(VIEW_LABEL[candidate])}
-            </button>
-          ))}
+        <div className="ghp-scope">
+          <Select
+            label={t('panel.org')}
+            ariaLabel={t('panel.org')}
+            value={prefs.org ?? ''}
+            options={orgOptions}
+            onChange={value => actions.setOrg(value === '' ? undefined : value)}
+          />
+          <Select
+            label={t('panel.project')}
+            ariaLabel={t('panel.project')}
+            value={prefs.projectId ?? ''}
+            options={projectOptions}
+            disabled={prefs.org === undefined || snapshot.projectsBlocked}
+            onChange={value => actions.setProject(value === '' ? undefined : value)}
+          />
+          <ScopeCombo
+            label={t('panel.repoFilter')}
+            value={prefs.repo}
+            placeholder={t('panel.allRepos')}
+            options={repoOptions}
+            onChange={repo => actions.setRepo(repo)}
+            t={t}
+          />
+          <Select
+            label={t('panel.assignee')}
+            ariaLabel={t('panel.assignee')}
+            value={prefs.assignee}
+            options={assigneeOptions}
+            onChange={value => actions.setAssignee(value)}
+          />
+          <Select
+            label={t('panel.stateFilter')}
+            ariaLabel={t('panel.stateFilter')}
+            value={prefs.state}
+            options={stateOptions}
+            onChange={value => actions.setStateFilter(value as Prefs['state'])}
+          />
         </div>
 
-        {view === 'repo' && (
-          <div className="ghp-picker">
-            {snapshot.catalog === undefined
-              ? <span className="ghp-muted">{t('panel.loading')}</span>
-              : (
-                <>
-                  <Select
-                    label={t('panel.repo')}
-                    value={snapshot.prefs.repo ?? ''}
-                    options={repoOptions}
-                    ariaLabel={t('panel.repo')}
-                    onChange={value => actions.setRepo(value === '' ? undefined : value)}
-                  />
-                  {repos.length === 0 && <span className="ghp-muted">{t('panel.noRepos')}</span>}
-                </>
-              )}
+        {prefs.org === undefined && (
+          <div className="ghp-notice" role="note">
+            <span>{t('panel.pickOrgHint')}</span>
           </div>
         )}
 
-        {view === 'project' && (
-          <div className="ghp-picker">
-            {snapshot.catalog === undefined
-              ? <span className="ghp-muted">{t('panel.loading')}</span>
-              : (
-                <>
-                  <Select
-                    label={t('panel.project')}
-                    value={snapshot.prefs.projectId ?? ''}
-                    options={projectOptions}
-                    placeholder={t('panel.selectProject')}
-                    ariaLabel={t('panel.project')}
-                    disabled={snapshot.projectsBlocked}
-                    onChange={value => actions.setProject(value === '' ? undefined : value)}
-                  />
-                  {!snapshot.projectsBlocked && projectOptions.length === 0 && (
-                    <span className="ghp-muted">{t('panel.noProjects')}</span>
-                  )}
-                  {snapshot.projectsBlocked && (
-                    <div className="ghp-notice" role="note">
-                      <span>{t('panel.projectsBlocked')}</span>
-                      <CommandBlock
-                        command={PROJECT_SCOPE_COMMAND}
-                        copyLabel={t('panel.copyCommand')}
-                        onCopy={() => actions.copyText(PROJECT_SCOPE_COMMAND)}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
+        {snapshot.projectsBlocked && prefs.org !== undefined && (
+          <div className="ghp-notice" role="note">
+            <span>{t('panel.projectsBlocked')}</span>
+            <CommandBlock
+              command={PROJECT_SCOPE_COMMAND}
+              copyLabel={t('panel.copyCommand')}
+              onCopy={() => actions.copyText(PROJECT_SCOPE_COMMAND)}
+            />
           </div>
         )}
 
@@ -289,6 +340,7 @@ export function GitHubPage({ snapshot, actions, t }: PageProps) {
           {totalCount !== undefined && (
             <span className="ghp-muted">{t('panel.total', { count: totalCount })}</span>
           )}
+          {snapshot.scopeLoading && <span className="ghp-muted">{t('panel.loadingScope')}</span>}
         </div>
 
         <div className={split ? 'ghp-body ghp-split' : 'ghp-body'}>
@@ -323,12 +375,12 @@ export function GitHubPage({ snapshot, actions, t }: PageProps) {
             {showEmpty && (
               <EmptyState
                 icon={<GitHubIcon size={28} />}
-                title={noAuth ? t('panel.emptyAuth') : snapshot.list?.notice ?? t('panel.empty')}
+                title={noAuth ? t('panel.emptyAuth') : snapshot.list?.notice ?? emptyTitle(prefs, snapshot.list?.totalCount, t)}
               />
             )}
 
             <div className="ghp-list">
-              {filtered.map(card => (
+              {filtered.map((card: IssueCardVM) => (
                 <IssueRow
                   key={card.id}
                   card={card}
@@ -364,4 +416,21 @@ export function GitHubPage({ snapshot, actions, t }: PageProps) {
       )}
     </section>
   )
+}
+
+/**
+ * The empty-state sentence for the current cascade.
+ * @param prefs - the active filters.
+ * @param total - the project's total item count, when GitHub reported one.
+ * @param t - translate function.
+ * @returns the sentence to show.
+ */
+function emptyTitle(prefs: Prefs, total: number | undefined, t: PageProps['t']): string {
+  if (prefs.projectId !== undefined && prefs.assignee === '@me') {
+    return t('panel.emptyProjectMe', { count: total ?? 0 })
+  }
+  if (prefs.projectId !== undefined && prefs.state === 'open') {
+    return t('panel.emptyProjectOpen')
+  }
+  return t('panel.empty')
 }

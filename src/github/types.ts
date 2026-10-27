@@ -9,7 +9,8 @@
  */
 
 import type {
-  IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, ScopeCatalog,
+  IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, OrgRefVM, ProjectRefVM,
+  RepoPageVM, ScopeCatalog,
 } from '../vm.ts'
 
 /** A token resolved from the machine's `gh` CLI. */
@@ -63,8 +64,12 @@ export class GitHubApiError extends Error {
 /** The GitHub operations the panel needs. */
 export interface GitHubApi {
   readonly host: string
-  /** Repositories, organizations, projects, and the signed-in viewer. */
+  /** Repositories, organizations, and the signed-in viewer. */
   scopes(signal?: AbortSignal): Promise<ScopeCatalog>
+  /** Projects v2 for one organization; a missing scope degrades to `blocked`. */
+  orgProjects(org: string, signal?: AbortSignal): Promise<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }>
+  /** The organization's repositories (forks included, capped in the implementation). */
+  orgRepos(org: string, signal?: AbortSignal): Promise<RepoPageVM>
   /** One page of issues for a list view. */
   listIssues(request: IssueListRequest, signal?: AbortSignal): Promise<IssueListPage>
   /** One issue with its body and linked pull requests. */

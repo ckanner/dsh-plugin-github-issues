@@ -229,33 +229,39 @@ test('detail pages are cached until the detail cache is invalidated', async (t) 
   assert.equal(fake.count('IssueDetail'), 2)
 })
 
-test('scopes survives a missing read:project scope and degrades the project view', async (t) => {
+test('scopes returns the organization/repository catalog and the org project lookup degrades', async (t) => {
   const fake = useFake(t)
   fake.on('ScopeCatalog', { body: SCOPE_BODY })
   fake.on('ScopeProjects', { body: PROJECTS_BLOCKED_BODY })
   const api = makeApi()
   const catalog = await api.scopes()
   assert.equal(catalog.viewer?.login, 'ckanner')
-  assert.deepEqual(catalog.orgs, ['one2x-ai'])
+  assert.deepEqual(catalog.orgs, [{ login: 'one2x-ai' }])
   assert.deepEqual(catalog.repos, [{
     nameWithOwner: 'one2x-ai/mesh',
     isPrivate: true,
+    isFork: false,
     pushedAt: '2026-10-27T13:01:41Z',
   }])
-  assert.deepEqual(catalog.projects, [])
-  assert.equal(catalog.projectsBlocked, true)
-  assert.ok(catalog.projectsError?.includes('read:project'))
   // The catalog is cached for five minutes.
   await api.scopes()
   assert.equal(fake.count('ScopeCatalog'), 1)
-  // A project view now answers with a notice and makes no request at all.
-  const page = await api.listIssues({ view: 'project', projectId: 'PVT_kwDOtest' })
+  // Projects are loaded per organization, on demand.
+  const projects = await api.orgProjects('one2x-ai')
+  assert.deepEqual(projects.projects, [])
+  assert.equal(projects.blocked, true)
+  assert.ok(projects.error?.includes('read:project'))
+  await api.orgProjects('one2x-ai')
+  assert.equal(fake.count('ScopeProjects'), 1)
+  // A project view now answers with a notice and makes no items request at all.
+  const page = await api.listIssues({ projectId: 'PVT_kwDOtest', state: 'open', assignee: '@me' })
   assert.deepEqual(page.items, [])
   assert.ok(page.notice?.includes('read:project'))
   assert.equal(fake.count('ProjectItems'), 0)
-  // A full invalidate drops the catalog too.
+  // A full invalidate drops the catalog and the organization caches too.
   api.invalidate('all')
   await api.scopes()
+  await api.orgProjects('one2x-ai')
   assert.equal(fake.count('ScopeCatalog'), 2)
   assert.equal(fake.count('ScopeProjects'), 2)
 })
@@ -440,7 +446,11 @@ test('the project view maps issue and PR items and filters drafts by state', asy
   assert.equal(all.items[1]?.number, 2527)
   assert.equal(all.totalCount, 3)
   assert.deepEqual(all.rateLimit, { cost: 2, remaining: 4790 })
+  // The state filter is now sent to GitHub's own project filter (the fake
+  // ignores it and returns the same board), so the host must not filter locally.
   const openOnly = await api.listIssues({ view: 'project', projectId: 'PVT_kwDOtest', state: 'open' })
-  assert.equal(openOnly.items.length, 1)
-  assert.equal(openOnly.items[0]?.number, 2469)
+  assert.equal(openOnly.items.length, 2)
+  const projectCalls = fake.calls.filter(call => call.operation === 'ProjectItems')
+  assert.equal(projectCalls.at(-1)?.variables.query, 'is:open')
+  assert.equal(projectCalls.at(-2)?.variables.query, '')
 })

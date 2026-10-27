@@ -18,7 +18,7 @@ import type { GitHubApi, GitHubApiOptions, GhProbe, ResolvedAuth } from './githu
 import { GitHubApiError } from './github/types.ts'
 import type { PrefsStore } from './github/state.ts'
 import type {
-  GitHubStatus, IssueDetailVM, IssueListPage, Prefs, ScopeCatalog,
+  GitHubStatus, IssueDetailVM, IssueListPage, Prefs, ProjectRefVM, RepoPageVM, ScopeCatalog,
 } from './vm.ts'
 
 /** How long one resolved token is reused before asking `gh` again. */
@@ -40,10 +40,12 @@ export interface ControllerOptions {
 
 /** Validate a list request that came over the wire. */
 function normalizeRequest(input: unknown): {
-  view: 'assigned' | 'created' | 'open' | 'repo' | 'project'
+  view?: 'assigned' | 'created' | 'open' | 'repo' | 'project'
   repos?: string[]
   projectId?: string
   org?: string
+  assignee: string
+  author?: string
   state: 'open' | 'closed' | 'all'
   first: number
   after: string | null
@@ -52,7 +54,7 @@ function normalizeRequest(input: unknown): {
   const views = ['assigned', 'created', 'open', 'repo', 'project'] as const
   const view = typeof raw.view === 'string' && (views as readonly string[]).includes(raw.view)
     ? raw.view as (typeof views)[number]
-    : 'assigned'
+    : undefined
   const states = ['open', 'closed', 'all'] as const
   const state = typeof raw.state === 'string' && (states as readonly string[]).includes(raw.state)
     ? raw.state as (typeof states)[number]
@@ -64,11 +66,19 @@ function normalizeRequest(input: unknown): {
     ? Math.min(Math.max(Math.trunc(raw.first), 1), 50)
     : 30
   const after = typeof raw.after === 'string' && raw.after !== '' ? raw.after : null
+  const assignee = typeof raw.assignee === 'string' && raw.assignee !== ''
+    ? raw.assignee
+    : view === 'assigned' ? '@me' : 'all'
+  const author = typeof raw.author === 'string' && raw.author !== ''
+    ? raw.author
+    : view === 'created' ? '@me' : undefined
   return {
-    view,
+    ...view === undefined ? {} : { view },
     state,
     first,
     after,
+    assignee,
+    ...author === undefined ? {} : { author },
     ...repos === undefined || repos.length === 0 ? {} : { repos },
     ...typeof raw.projectId === 'string' && raw.projectId !== '' ? { projectId: raw.projectId } : {},
     ...typeof raw.org === 'string' && raw.org !== '' ? { org: raw.org } : {},
@@ -178,13 +188,19 @@ export class GitHubIssuesController extends TypertRemoteService {
   /** One page of the list. */
   @Remote
   async listIssues(request: unknown): Promise<IssueListPage> {
-    const normalized = normalizeRequest(request)
-    const page = await this.withApi(api => api.listIssues(normalized))
-    const prefs = this.options.prefs.load()
-    const pinned = prefs.pinned
-    // A pinned issue that is still open must not disappear from an unfiltered
-    // list, so the UI can always render it; the client merges by id.
-    return { ...page, items: page.items.filter(item => item.number > 0 || pinned !== undefined) }
+    return await this.withApi(api => api.listIssues(normalizeRequest(request)))
+  }
+
+  /** Projects v2 of one organization; empty and `blocked` without `read:project`. */
+  @Remote
+  async orgProjects(org: string): Promise<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }> {
+    return await this.withApi(api => api.orgProjects(org))
+  }
+
+  /** One organization's repositories, loaded when the organization is chosen. */
+  @Remote
+  async orgRepos(org: string): Promise<RepoPageVM> {
+    return await this.withApi(api => api.orgRepos(org))
   }
 
   /** One issue with body and linked PRs. */

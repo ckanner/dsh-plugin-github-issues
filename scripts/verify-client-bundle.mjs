@@ -188,6 +188,8 @@ assert.deepEqual(
   [
     'githubIssues/status',
     'githubIssues/catalog',
+    'githubIssues/orgProjects',
+    'githubIssues/orgRepos',
     'githubIssues/listIssues',
     'githubIssues/issueDetail',
     'githubIssues/loadPrefs',

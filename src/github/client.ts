@@ -22,14 +22,15 @@
  */
 
 import type {
-  IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, ListView, ProjectRefVM,
-  RepoRefVM, ScopeCatalog,
+  IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, ListView, OrgRefVM,
+  ProjectRefVM, RepoPageVM, RepoRefVM, ScopeCatalog,
 } from '../vm.ts'
 import {
-  buildIssueDetailQuery, buildProjectItemsQuery, buildProjectsQuery, buildRepoIssuesQuery,
-  buildScopeQuery, buildSearchIssuesQuery, searchStringFor, statesForView,
+  buildIssueDetailQuery, buildOrgProjectsQuery, buildOrgReposQuery, buildProjectItemsQuery,
+  buildRepoIssuesQuery, buildScopeQuery, buildSearchIssuesQuery, projectItemsFilterFor,
+  searchStringForFilters, statesForView,
 } from './queries.ts'
-import type { GitHubGraphQLRequest, SearchView } from './queries.ts'
+import type { GitHubGraphQLRequest } from './queries.ts'
 import { GitHubApiError, splitRepo } from './types.ts'
 import type { GitHubApi, GitHubApiOptions } from './types.ts'
 import { toIssueCardVM, toIssueDetailVM, toProjectItemCardVM } from './vm.ts'
@@ -105,9 +106,12 @@ interface Timed<T> {
 
 /** A list request after validation and defaulting; also the cache key's input. */
 interface NormalizedListRequest {
-  view: ListView
+  /** Legacy view, kept so older callers and tests keep one meaning. */
+  view?: ListView
   repos: string[]
   state: 'open' | 'closed' | 'all'
+  assignee: string
+  author?: string
   first: number
   after: string | null
   projectId?: string
@@ -130,6 +134,7 @@ interface RawRateLimit {
 interface RawRepoRef {
   nameWithOwner?: string | null
   isPrivate?: boolean | null
+  isFork?: boolean | null
   pushedAt?: string | null
 }
 
@@ -143,6 +148,17 @@ interface RawRepoPage {
 /** One organization node in the scope query. */
 interface RawOrgRef {
   login?: string | null
+  name?: string | null
+}
+
+/** The response of one organization's project discovery. */
+interface RawOrgProjectsData {
+  organization?: { projectsV2?: RawProjectConnection | null } | null
+}
+
+/** The response of one organization's repository page. */
+interface RawOrgReposData {
+  organization?: { repositories?: RawRepoPage | null } | null
 }
 
 /** The scope catalog response. */
@@ -402,12 +418,21 @@ function normalizeListRequest(request: IssueListRequest): NormalizedListRequest 
   const state = request.state === 'closed' || request.state === 'all' ? request.state : 'open'
   const projectId = typeof request.projectId === 'string' && request.projectId !== '' ? request.projectId : undefined
   const org = typeof request.org === 'string' && request.org !== '' ? request.org : undefined
+  const view = request.view
+  const assignee = typeof request.assignee === 'string' && request.assignee !== ''
+    ? request.assignee
+    : view === 'assigned' ? '@me' : 'all'
+  const author = typeof request.author === 'string' && request.author !== ''
+    ? request.author
+    : view === 'created' ? '@me' : undefined
   return {
-    view: request.view,
+    ...view === undefined ? {} : { view },
     repos,
     state,
+    assignee,
     first,
     after,
+    ...author === undefined ? {} : { author },
     ...projectId === undefined ? {} : { projectId },
     ...org === undefined ? {} : { org },
   }
@@ -444,17 +469,33 @@ function viewerOf(raw: RawScopeData['viewer']): ScopeCatalog['viewer'] {
   }
 }
 
-/** Map and dedupe the organization logins. */
-function orgsOf(raw: { nodes?: (RawOrgRef | null)[] | null } | null | undefined): string[] {
-  const orgs: string[] = []
+/** Map and dedupe the organizations, keeping a display name when GitHub sends one. */
+function orgsOf(raw: { nodes?: (RawOrgRef | null)[] | null } | null | undefined): OrgRefVM[] {
+  const orgs: OrgRefVM[] = []
   const seen = new Set<string>()
   for (const node of raw?.nodes ?? []) {
     if (node === null || typeof node.login !== 'string' || node.login === '') continue
     if (seen.has(node.login)) continue
     seen.add(node.login)
-    orgs.push(node.login)
+    orgs.push({
+      login: node.login,
+      ...typeof node.name === 'string' && node.name !== '' ? { name: node.name } : {},
+    })
   }
   return orgs
+}
+
+/** Merge organization lists by login, keeping the display name when one side has it. */
+function mergeOrgs(...lists: readonly OrgRefVM[][]): OrgRefVM[] {
+  const merged = new Map<string, OrgRefVM>()
+  for (const list of lists) {
+    for (const org of list) {
+      const existing = merged.get(org.login)
+      const name = org.name ?? existing?.name
+      merged.set(org.login, name === undefined ? { login: org.login } : { login: org.login, name })
+    }
+  }
+  return [...merged.values()].sort((a, b) => a.login.localeCompare(b.login))
 }
 
 /** Append one repository page, deduping by `nameWithOwner`. */
@@ -467,6 +508,7 @@ function appendRepos(target: RepoRefVM[], page: RawRepoPage | null | undefined):
     target.push({
       nameWithOwner: node.nameWithOwner,
       isPrivate: node.isPrivate === true,
+      isFork: node.isFork === true,
       ...typeof node.pushedAt === 'string' && node.pushedAt !== '' ? { pushedAt: node.pushedAt } : {},
     })
   }
@@ -502,6 +544,8 @@ class GitHubApiClient implements GitHubApi {
   private projectsError: string | undefined
   private readonly listCache = new Map<string, Timed<IssueListPage>>()
   private readonly detailCache = new Map<string, Timed<IssueDetailVM>>()
+  private readonly orgReposCache = new Map<string, Timed<RepoPageVM>>()
+  private readonly orgProjectsCache = new Map<string, Timed<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }>>()
 
   /**
    * @param options - token, host, and an optional signal covering the session.
@@ -513,13 +557,75 @@ class GitHubApiClient implements GitHubApi {
     this.baseSignal = options.signal
   }
 
-  /** Repositories, organizations, projects, and the signed-in viewer. */
+  /** The viewer's organizations and repositories, for the cascade's first level. */
   async scopes(signal?: AbortSignal): Promise<ScopeCatalog> {
     const cached = this.scopesCache
     if (cached !== undefined && Date.now() - cached.at < SCOPES_TTL_MS) return cached.data
     const catalog = await this.fetchScopes(signal)
     this.scopesCache = { at: Date.now(), data: catalog }
     return catalog
+  }
+
+  /** Projects v2 of one organization, loaded when the organization is chosen. */
+  async orgProjects(
+    org: string,
+    signal?: AbortSignal,
+  ): Promise<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }> {
+    const cached = this.orgProjectsCache.get(org)
+    if (cached !== undefined && Date.now() - cached.at < SCOPES_TTL_MS) return cached.data
+    const scopeMessage = projectsScopeMessage(this.host)
+    if (this.projectsBlocked) {
+      return { projects: [], blocked: true, error: this.projectsError ?? scopeMessage }
+    }
+    const body = await this.request(buildOrgProjectsQuery(org), signal)
+    if (body.errors.some(isScopeError)) {
+      this.projectsBlocked = true
+      this.projectsError = scopeMessage
+      return { projects: [], blocked: true, error: scopeMessage }
+    }
+    if (body.errors.some(isRateLimitError)) throw errorFromBody(body.errors, body.status)
+    const data = (body.data ?? undefined) as RawOrgProjectsData | undefined
+    const projects: ProjectRefVM[] = []
+    appendProjects(projects, data?.organization?.projectsV2, org)
+    const failure = body.errors.find(error => !isNotFoundError(error))
+    const result = {
+      projects,
+      blocked: false,
+      ...failure === undefined ? {} : { error: `Projects could not be read: ${firstMessage([failure]) ?? 'unknown error'}` },
+    }
+    this.orgProjectsCache.set(org, { at: Date.now(), data: result })
+    return result
+  }
+
+  /**
+   * One organization's repositories, forks included.
+   * `organization.repositories` has no search argument, so up to four pages are
+   * fetched and the browser filters the list by name.
+   */
+  async orgRepos(org: string, signal?: AbortSignal): Promise<RepoPageVM> {
+    const cached = this.orgReposCache.get(org)
+    if (cached !== undefined && Date.now() - cached.at < SCOPES_TTL_MS) return cached.data
+    const items: RepoRefVM[] = []
+    let totalCount = 0
+    let after: string | null = null
+    let hasNextPage = false
+    for (let page = 0; page < 4; page += 1) {
+      const data: RawOrgReposData = this.unwrap<RawOrgReposData>(await this.request(
+        buildOrgReposQuery({ org, first: 100, after }),
+        signal,
+      ))
+      const connection: RawRepoPage | null | undefined = data.organization?.repositories
+      appendRepos(items, connection)
+      if (typeof connection?.totalCount === 'number') totalCount = connection.totalCount
+      const pageInfo: RawPageInfo | null | undefined = connection?.pageInfo
+      hasNextPage = pageInfo?.hasNextPage === true
+      const cursor: string | null | undefined = pageInfo?.endCursor
+      after = typeof cursor === 'string' && cursor !== '' ? cursor : null
+      if (!hasNextPage || after === null) break
+    }
+    const result: RepoPageVM = { items, totalCount, hasNextPage, endCursor: after }
+    this.orgReposCache.set(org, { at: Date.now(), data: result })
+    return result
   }
 
   /** One page of issues for the requested view. */
@@ -566,33 +672,33 @@ class GitHubApiClient implements GitHubApi {
       return
     }
     this.scopesCache = undefined
+    this.orgReposCache.clear()
+    this.orgProjectsCache.clear()
     this.projectsBlocked = false
     this.projectsError = undefined
     this.listCache.clear()
     this.detailCache.clear()
   }
 
-  /** Build the catalog, tolerating a projects query that lacks `read:project`. */
+  /** Build the catalog: viewer, organizations (GraphQL + REST union), and repositories. */
   private async fetchScopes(signal?: AbortSignal): Promise<ScopeCatalog> {
     const core = await this.fetchScopeCore(signal)
-    const projects = await this.fetchProjects(core.viewer?.login, core.orgs, signal)
     return {
       viewer: core.viewer,
       orgs: core.orgs,
       repos: core.repos,
-      projects: projects.projects,
-      projectsBlocked: projects.blocked,
-      ...projects.error === undefined ? {} : { projectsError: projects.error },
+      projectsBlocked: this.projectsBlocked,
+      ...this.projectsError === undefined ? {} : { projectsError: this.projectsError },
     }
   }
 
   /** The viewer, organizations, and up to two pages of repositories. */
   private async fetchScopeCore(
     signal?: AbortSignal,
-  ): Promise<{ viewer: ScopeCatalog['viewer']; orgs: string[]; repos: RepoRefVM[] }> {
+  ): Promise<{ viewer: ScopeCatalog['viewer']; orgs: OrgRefVM[]; repos: RepoRefVM[] }> {
     let data = this.unwrap<RawScopeData>(await this.request(buildScopeQuery(null), signal))
     const viewer = viewerOf(data.viewer)
-    const orgs = orgsOf(data.viewer?.organizations)
+    const graphOrgs = orgsOf(data.viewer?.organizations)
     const repos: RepoRefVM[] = []
     appendRepos(repos, data.viewer?.repositories)
     while (repos.length < MAX_SCOPE_REPOS) {
@@ -603,72 +709,64 @@ class GitHubApiClient implements GitHubApi {
       data = this.unwrap<RawScopeData>(await this.request(buildScopeQuery(after), signal))
       appendRepos(repos, data.viewer?.repositories)
     }
-    return { viewer, orgs, repos }
+    // `viewer.organizations` reports public memberships only; the REST endpoint is
+    // the one that includes private ones. A failure is not an error: a union of
+    // whatever each source returned is still a better picker.
+    const restOrgs = await this.restOrgs(signal)
+    return { viewer, orgs: mergeOrgs(graphOrgs, restOrgs), repos }
   }
 
-  /** List projects for the viewer and each organization, degrading on missing scope. */
-  private async fetchProjects(
-    viewerLogin: string | undefined,
-    orgs: readonly string[],
-    signal?: AbortSignal,
-  ): Promise<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }> {
-    const scopeMessage = projectsScopeMessage(this.host)
-    if (this.projectsBlocked) {
-      return { projects: [], blocked: true, error: this.projectsError ?? scopeMessage }
-    }
-    const queryOrgs = orgs.slice(0, PROJECT_SCOPE_LIMIT)
-    const body = await this.request(buildProjectsQuery(queryOrgs), signal)
-    if (body.errors.some(isScopeError)) {
-      this.projectsBlocked = true
-      this.projectsError = scopeMessage
-      return { projects: [], blocked: true, error: scopeMessage }
-    }
-    if (body.errors.some(isRateLimitError)) throw errorFromBody(body.errors, body.status)
-    const data = (body.data ?? undefined) as RawProjectsData | undefined
-    const projects: ProjectRefVM[] = []
-    if (data !== undefined) {
-      appendProjects(projects, data.viewer?.projectsV2, viewerLogin)
-      queryOrgs.forEach((org, index) => {
-        const alias = data[`o${String(index)}`] as { projectsV2?: RawProjectConnection | null } | null | undefined
-        appendProjects(projects, alias?.projectsV2, org)
+  /** Organizations as `/user/orgs` reports them (includes private memberships). */
+  private async restOrgs(signal?: AbortSignal): Promise<OrgRefVM[]> {
+    try {
+      const base = this.host === 'github.com' ? 'https://api.github.com' : `https://${this.host}/api/v3`
+      const effectiveSignal = signal ?? this.baseSignal
+      const response = await fetch(`${base}/user/orgs?per_page=100`, {
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          accept: 'application/vnd.github+json',
+          'user-agent': USER_AGENT,
+        },
+        ...effectiveSignal === undefined ? {} : { signal: effectiveSignal },
       })
+      if (!response.ok) return []
+      const rows = await response.json() as { login?: unknown; name?: unknown }[]
+      return rows
+        .filter((row): row is { login: string; name?: unknown } => typeof row.login === 'string' && row.login !== '')
+        .map(row => ({
+          login: row.login,
+          ...typeof row.name === 'string' && row.name !== '' ? { name: row.name } : {},
+        }))
+    } catch {
+      return []
     }
-    // An inaccessible organization alias is normal; anything else is reported
-    // alongside the catalog rather than failing the whole picker.
-    const failure = body.errors.find(error => !isNotFoundError(error))
-    const error = failure === undefined ? undefined : `Some projects could not be read: ${firstMessage([failure]) ?? 'unknown error'}`
-    return { projects, blocked: false, ...error === undefined ? {} : { error } }
   }
 
-  /** Dispatch one list view to its query and map the answer. */
+  /** Dispatch one request to the project, exact-repository, or search endpoint. */
   private async fetchList(
     request: NormalizedListRequest,
     signal?: AbortSignal,
   ): Promise<IssueListPage> {
-    switch (request.view) {
-      case 'assigned':
-      case 'created':
-      case 'open':
-        return await this.fetchSearchList(request, request.view, signal)
-      case 'repo': {
-        if (request.repos.length === 0) return emptyPage('Select a repository to read its issues.')
-        if (request.repos.length === 1) return await this.fetchRepoList(request, signal)
-        // Several repositories are OR-ed inside one search query, which keeps
-        // the page a single point instead of one request per repository.
-        return await this.fetchSearchList(request, 'repo', signal)
-        }
-      case 'project':
-        return await this.fetchProjectList(request, signal)
+    if (request.projectId !== undefined) return await this.fetchProjectList(request, signal)
+    // A legacy repository request with no repository chosen answers with a hint
+    // instead of listing the whole account.
+    if (request.view === 'repo' && request.repos.length === 0) {
+      return emptyPage('Select a repository to read its issues.')
     }
+    // A legacy single-repository request keeps the exact `issues` connection (and
+    // its authoritative totalCount); every cascade request is one search.
+    if (request.view === 'repo' && request.repos.length === 1 && request.assignee === 'all') {
+      return await this.fetchRepoList(request, signal)
+    }
+    return await this.fetchSearchList(request, signal)
   }
 
-  /** A page from GitHub's search API (assigned, created, open, multi-repo). */
+  /** A page from GitHub's search API, scoped by the cascade's qualifiers. */
   private async fetchSearchList(
     request: NormalizedListRequest,
-    view: SearchView,
     signal?: AbortSignal,
   ): Promise<IssueListPage> {
-    const search = searchStringFor(view, { state: request.state, repos: request.repos })
+    const search = searchStringForFilters(request)
     const data = this.unwrap<RawSearchData>(await this.request(
       buildSearchIssuesQuery({ search, first: request.first, after: request.after }),
       signal,
@@ -714,55 +812,82 @@ class GitHubApiClient implements GitHubApi {
     }
   }
 
-  /** A page from one Projects v2 board, filtered to issues client-side. */
+  /**
+   * A page from one Projects v2 board.
+   *
+   * The state and assignee filters go to GitHub's own item filter (a 126-item
+   * board returns its 25 open items instead of the first page of 30 filtered
+   * locally). A repository filter has no server-side equivalent in the project
+   * filter DSL, so matching pages are scanned until the page is full.
+   */
   private async fetchProjectList(
     request: NormalizedListRequest,
     signal?: AbortSignal,
   ): Promise<IssueListPage> {
     if (this.projectsBlocked) return emptyPage(this.projectsError ?? projectsScopeMessage(this.host))
     if (request.projectId === undefined) return emptyPage('Select a project to read its issues.')
-    let body: GraphQLResult
-    try {
-      body = await this.request(buildProjectItemsQuery({
-        projectId: request.projectId,
-        first: request.first,
-        after: request.after,
-      }), signal)
-    } catch (error) {
-      if (error instanceof GitHubApiError && error.code === 'missing_scope') {
+    const filter = projectItemsFilterFor(request)
+    const wantedRepos = new Set(request.repos)
+    const cards: IssueCardVM[] = []
+    let cursor = request.after
+    let totalCount: number | undefined
+    let rateLimit: IssueListPage['rateLimit'] | undefined
+    let pageInfo: RawPageInfo | null | undefined
+    let scanned = 0
+    for (;;) {
+      let body: GraphQLResult
+      try {
+        body = await this.request(buildProjectItemsQuery({
+          projectId: request.projectId,
+          first: request.first,
+          after: cursor,
+          filter,
+        }), signal)
+      } catch (error) {
+        if (error instanceof GitHubApiError && error.code === 'missing_scope') {
+          this.projectsBlocked = true
+          this.projectsError = projectsScopeMessage(this.host)
+          return emptyPage(this.projectsError)
+        }
+        throw error
+      }
+      if (body.errors.some(isScopeError)) {
         this.projectsBlocked = true
         this.projectsError = projectsScopeMessage(this.host)
         return emptyPage(this.projectsError)
       }
-      throw error
+      const data = this.unwrap<RawProjectItemsData>(body)
+      const items = data.node?.items
+      if (items === null || items === undefined) {
+        throw new GitHubApiError(
+          `project ${request.projectId} was not found or is not accessible`,
+          'not_found',
+          404,
+        )
+      }
+      totalCount ??= typeof items.totalCount === 'number' ? items.totalCount : undefined
+      rateLimit ??= rateLimitOf(data.rateLimit)
+      for (const item of items.nodes ?? []) {
+        const card = toProjectItemCardVM(item)
+        if (card === undefined) continue
+        if (wantedRepos.size > 0 && !wantedRepos.has(card.repo)) continue
+        cards.push(card)
+        if (cards.length >= request.first) break
+      }
+      pageInfo = items.pageInfo
+      scanned += 1
+      const next = pageInfo?.hasNextPage === true ? pageInfo.endCursor : null
+      if (cards.length >= request.first || scanned >= 4 || typeof next !== 'string' || next === '') break
+      cursor = next
     }
-    if (body.errors.some(isScopeError)) {
-      this.projectsBlocked = true
-      this.projectsError = projectsScopeMessage(this.host)
-      return emptyPage(this.projectsError)
-    }
-    const data = this.unwrap<RawProjectItemsData>(body)
-    const items = data.node?.items
-    if (items === null || items === undefined) {
-      throw new GitHubApiError(
-        `project ${request.projectId} was not found or is not accessible`,
-        'not_found',
-        404,
-      )
-    }
-    const cards: IssueCardVM[] = []
-    for (const item of items.nodes ?? []) {
-      const card = toProjectItemCardVM(item)
-      if (card === undefined) continue
-      if (!stateMatches(card.state, request.state)) continue
-      cards.push(card)
-    }
-    const rateLimit = rateLimitOf(data.rateLimit)
     return {
       items: cards,
-      pageInfo: pageInfoOf(items.pageInfo),
-      ...typeof items.totalCount === 'number' ? { totalCount: items.totalCount } : {},
+      ...totalCount === undefined ? {} : { totalCount },
       ...rateLimit === undefined ? {} : { rateLimit },
+      pageInfo: {
+        hasNextPage: pageInfo?.hasNextPage === true,
+        endCursor: pageInfo?.endCursor ?? null,
+      },
     }
   }
 

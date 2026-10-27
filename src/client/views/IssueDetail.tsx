@@ -157,6 +157,9 @@ export function IssueDetailPane({ snapshot, actions, t }: PageProps) {
           </Badge>
         )}
         {card.issueType !== undefined && <Badge tone="neutral" title={t('panel.type')}>{card.issueType.name}</Badge>}
+        {card.projectStatus !== undefined && (
+          <Badge tone="info" title={t('panel.project')}>{card.projectStatus.name}</Badge>
+        )}
         <span className="ghx-head-spacer" />
         <IconButton label={t('panel.close')} onClick={() => actions.closeDetail()}>
           <CloseGlyph size={14} />

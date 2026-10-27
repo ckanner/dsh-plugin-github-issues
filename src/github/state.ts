@@ -42,8 +42,13 @@ export function applyPrefsPatch(current: Prefs, patch: unknown): Prefs {
   if (typeof patch !== 'object' || patch === null) return current
   const input = patch as Record<string, unknown>
   const next: Prefs = { ...current }
-  if ('view' in input) next.view = pick(input.view, ['assigned', 'created', 'open', 'repo', 'project'] as const, current.view)
   if ('state' in input) next.state = pick(input.state, ['open', 'closed', 'all'] as const, current.state)
+  if ('assignee' in input) {
+    const assignee = typeof input.assignee === 'string' ? input.assignee.trim() : ''
+    if (assignee === '@me' || assignee === 'all' || /^[A-Za-z0-9][A-Za-z0-9-]*$/.test(assignee)) next.assignee = assignee
+  }
+  if ('org' in input) next.org = optionalString(input.org)
+  if ('repo' in input) next.repo = optionalString(input.repo)
   if ('handoffMode' in input) next.handoffMode = pick(input.handoffMode, ['draft', 'send'] as const, current.handoffMode)
   if ('repo' in input) next.repo = optionalString(input.repo)
   if ('projectId' in input) next.projectId = optionalString(input.projectId)

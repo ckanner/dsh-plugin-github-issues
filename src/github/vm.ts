@@ -170,6 +170,8 @@ export interface RawProjectItem {
   type?: string | null
   content?: RawProjectItemContent | null
   priority?: RawProjectFieldValue | null
+  /** The project's `Status` single-select value, when defined on the board. */
+  status?: RawProjectFieldValue | null
 }
 
 /** Conclusions that mean "this check needs a human before merging". */
@@ -519,5 +521,16 @@ export function toProjectItemCardVM(item: RawProjectItem | null | undefined): Is
   if (content === null || content === undefined) return undefined
   if (content.__typename !== 'Issue' && content.__typename !== 'PullRequest') return undefined
   const projectPriority = priorityFromProjectValue(item.priority)
-  return toIssueCardVM(content, projectPriority === undefined ? {} : { projectPriority })
+  const card = toIssueCardVM(content, projectPriority === undefined ? {} : { projectPriority })
+  const status = item.status
+  if (status !== null && status !== undefined && typeof status.name === 'string' && status.name !== '') {
+    return {
+      ...card,
+      projectStatus: {
+        name: status.name,
+        ...typeof status.color === 'string' && status.color !== '' ? { color: status.color } : {},
+      },
+    }
+  }
+  return card
 }

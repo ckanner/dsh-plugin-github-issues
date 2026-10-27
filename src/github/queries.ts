@@ -110,10 +110,10 @@ export function buildScopeQuery(after: string | null): GitHubGraphQLRequest {
   viewer {
     login
     avatarUrl(size: 32)
-    repositories(first: $first, after: $after, isFork: false, ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER], orderBy: {field: PUSHED_AT, direction: DESC}) {
+    repositories(first: $first, after: $after, ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER], orderBy: {field: PUSHED_AT, direction: DESC}) {
       totalCount
       pageInfo { hasNextPage endCursor }
-      nodes { nameWithOwner isPrivate pushedAt }
+      nodes { nameWithOwner isPrivate isFork pushedAt }
     }
     organizations(first: 100) {
       totalCount
@@ -197,13 +197,15 @@ export function buildProjectItemsQuery(input: {
   projectId: string
   first: number
   after: string | null
+  /** Projects v2 filter DSL (`is:open assignee:@me`), evaluated by GitHub. */
+  filter?: string
 }): GitHubGraphQLRequest {
   return {
-    query: `query ProjectItems($id: ID!, $first: Int!, $after: String) {
+    query: `query ProjectItems($id: ID!, $first: Int!, $after: String, $query: String!) {
   node(id: $id) {
     ... on ProjectV2 {
       id
-      items(first: $first, after: $after, query: "") {
+      items(first: $first, after: $after, query: $query) {
         totalCount
         pageInfo { hasNextPage endCursor }
         nodes {
@@ -215,6 +217,10 @@ export function buildProjectItemsQuery(input: {
             ... on ProjectV2ItemFieldTextValue { text }
             ... on ProjectV2ItemFieldNumberValue { number }
             ... on ProjectV2ItemFieldDateValue { date }
+          }
+          status: fieldValueByName(name: "Status") {
+            __typename
+            ... on ProjectV2ItemFieldSingleSelectValue { name color optionId }
           }
           content {
             __typename
@@ -244,7 +250,12 @@ export function buildProjectItemsQuery(input: {
   rateLimit { cost remaining }
 }
 ${FRAGMENTS}`,
-    variables: { id: input.projectId, first: input.first, after: input.after },
+    variables: {
+      id: input.projectId,
+      first: input.first,
+      after: input.after,
+      query: input.filter ?? '',
+    },
   }
 }
 
@@ -400,4 +411,99 @@ export function searchStringFor(
   if (state !== '') qualifiers.push(state)
   qualifiers.push('sort:updated-desc')
   return qualifiers.join(' ')
+}
+
+/**
+ * Projects v2 discovery for one organization, on demand.
+ * @param org - the organization login.
+ * @returns the operation and its variables.
+ */
+export function buildOrgProjectsQuery(org: string): GitHubGraphQLRequest {
+  return {
+    query: `query ScopeProjects($org: String!) {
+  organization(login: $org) {
+    projectsV2(first: 50) {
+      totalCount
+      nodes { id number title url }
+    }
+  }
+}`,
+    variables: { org },
+  }
+}
+
+/**
+ * One page of an organization's repositories, forks included.
+ * GitHub's `organization.repositories` has no search argument, so the browser
+ * filters the fetched pages locally.
+ * @param input - organization, page window, and page size.
+ * @returns the operation and its variables.
+ */
+export function buildOrgReposQuery(input: {
+  org: string
+  first: number
+  after: string | null
+}): GitHubGraphQLRequest {
+  return {
+    query: `query OrgRepos($org: String!, $first: Int!, $after: String) {
+  organization(login: $org) {
+    repositories(first: $first, after: $after, orderBy: {field: PUSHED_AT, direction: DESC}) {
+      totalCount
+      pageInfo { hasNextPage endCursor }
+      nodes { nameWithOwner isPrivate isFork pushedAt }
+    }
+  }
+}`,
+    variables: { org: input.org, first: input.first, after: input.after },
+  }
+}
+
+/**
+ * The issue search string for a cascade request.
+ *
+ * `is:issue` is mandatory because `search(type: ISSUE)` also matches pull
+ * requests. `org:` and `repo:` are ordinary search qualifiers, so an
+ * organization-wide list costs the same one point as a global one.
+ * @param request - the scope and filters.
+ * @returns e.g. `is:issue org:one2x-ai assignee:@me state:open sort:updated-desc`.
+ */
+export function searchStringForFilters(request: Pick<IssueListRequest, 'org' | 'repos' | 'assignee' | 'author' | 'state'>): string {
+  const qualifiers = ['is:issue']
+  if (request.org !== undefined && request.org !== '') qualifiers.push(`org:${request.org}`)
+  for (const repo of request.repos ?? []) {
+    const { owner, name } = splitRepo(repo)
+    qualifiers.push(`repo:${owner}/${name}`)
+  }
+  if (request.author !== undefined && request.author !== '' && request.author !== 'all') {
+    qualifiers.push(`author:${request.author}`)
+  } else if (request.assignee !== undefined && request.assignee !== '' && request.assignee !== 'all') {
+    qualifiers.push(`assignee:${request.assignee}`)
+  }
+  const state = stateQualifier(request.state)
+  if (state !== '') qualifiers.push(state)
+  qualifiers.push('sort:updated-desc')
+  return qualifiers.join(' ')
+}
+
+/**
+ * The Projects v2 item filter for a cascade request. GitHub evaluates it
+ * server-side, so a state filter on a 126-item board returns the 25 open ones
+ * rather than the first page filtered locally.
+ * @param request - the state and assignee filters.
+ * @returns e.g. `is:open assignee:@me`, or an empty string for no filter.
+ */
+export function projectItemsFilterFor(request: Pick<IssueListRequest, 'assignee' | 'state'>): string {
+  const parts: string[] = []
+  if (request.state === 'open') parts.push('is:open')
+  if (request.state === 'closed') parts.push('is:closed')
+  if (request.assignee !== undefined && request.assignee !== '' && request.assignee !== 'all') {
+    // `@me` is valid inside the project filter DSL just as in search.
+    parts.push(`assignee:${request.assignee}`)
+  }
+  return parts.join(' ')
+}
+
+/** The repository filter a project view applies to its item content. */
+export function reposFor(request: Pick<IssueListRequest, 'repos'>): string[] {
+  return request.repos ?? []
 }

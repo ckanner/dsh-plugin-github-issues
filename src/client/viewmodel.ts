@@ -10,7 +10,8 @@
 
 import type { InputActions, Translate } from './context.ts'
 import type {
-  GitHubStatus, IssueCardVM, IssueDetailVM, IssueListPage, Prefs, ScopeCatalog,
+  GitHubStatus, IssueCardVM, IssueDetailVM, IssueListPage, ProjectRefVM, Prefs, RepoPageVM,
+  ScopeCatalog,
 } from '../vm.ts'
 
 /** One panel error, in a shape the renderer can display. */
@@ -24,10 +25,17 @@ export interface PanelError {
 /** The whole panel state. Replaced wholesale on change, never mutated. */
 export interface PanelSnapshot {
   status?: GitHubStatus | undefined
+  /** Viewer, organizations, and the viewer's own repositories. */
   catalog?: ScopeCatalog | undefined
+  /** The selected organization's projects, loaded on demand. */
+  orgProjects?: ProjectRefVM[] | undefined
+  /** The selected organization's repositories, loaded on demand. */
+  orgRepos?: RepoPageVM | undefined
   list?: IssueListPage | undefined
   loading: boolean
   loadingMore: boolean
+  /** True while an organization's projects/repositories are loading. */
+  scopeLoading: boolean
   error?: PanelError | undefined
   prefs: Prefs
   selected?: IssueCardVM | undefined
@@ -41,6 +49,7 @@ export interface PanelSnapshot {
   toast?: string | undefined
   /** True when Projects v2 is unavailable because of the missing scope. */
   projectsBlocked: boolean
+  projectsError?: string | undefined
 }
 
 /** Everything the renderers may ask the store to do. */
@@ -49,12 +58,14 @@ export interface PanelActions {
   refresh(): void
   /** Append the next page. */
   loadMore(): void
-  /** Switch the list view. */
-  setView(view: Prefs['view']): void
-  /** Select the repository the repo view shows. */
-  setRepo(repo: string | undefined): void
-  /** Select the Projects v2 project the project view shows. */
+  /** Select the organization boundary; `undefined` means all organizations. */
+  setOrg(org: string | undefined): void
+  /** Select a Projects v2 board inside the organization. */
   setProject(projectId: string | undefined): void
+  /** Select one repository inside the organization (or the viewer's repos). */
+  setRepo(repo: string | undefined): void
+  /** Choose who the list is assigned to: `@me`, `all`, or a login. */
+  setAssignee(assignee: string): void
   /** Change the open/closed filter. */
   setStateFilter(state: Prefs['state']): void
   /** Load one issue's detail into the side pane. */
@@ -75,7 +86,7 @@ export interface PanelActions {
   promptText(card: IssueCardVM): string
   /** Copy arbitrary text (e.g. the scope command) to the clipboard. */
   copyText(text: string): void
-  /** Expand the catalog lazily (repository/project pickers). */
+  /** Expand the catalog lazily (organizations and the viewer's repositories). */
   loadCatalog(): void
   /** Clear the transient toast. */
   clearToast(): void

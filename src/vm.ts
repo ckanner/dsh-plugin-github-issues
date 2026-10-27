@@ -67,6 +67,12 @@ export interface PriorityVM {
   color?: string
 }
 
+/** One Projects v2 single-select field value (Status and friends). */
+export interface ProjectFieldValueVM {
+  name: string
+  color?: string
+}
+
 /** One pull request linked to an issue. */
 export interface LinkedPRVM {
   number: number
@@ -104,6 +110,8 @@ export interface IssueCardVM {
   priority?: PriorityVM
   /** PRs closed by this issue (best effort, cheap nested connection). */
   linkedPRs: LinkedPRVM[]
+  /** Projects v2 Status value, when the card came from a project view. */
+  projectStatus?: ProjectFieldValueVM
 }
 
 /** One issue's full detail. */
@@ -126,19 +134,38 @@ export interface IssueListPage {
 /** The list views the panel offers. */
 export type ListView = 'assigned' | 'created' | 'open' | 'repo' | 'project'
 
-/** One list request from the browser. */
+/**
+ * One list request from the browser.
+ *
+ * The scope is a cascade, not a view enum: an organization narrows the search to
+ * `org:<login>`, a project switches to Projects v2 items, and a repository adds a
+ * `repo:` qualifier (or filters the project's items by content repository). Any
+ * combination is legal; an empty scope means "everything the token can read".
+ */
 export interface IssueListRequest {
-  view: ListView
-  /** Repository scope: `owner/name` values (repo view uses the first). */
-  repos?: string[]
-  /** Projects v2 node id (project view). */
-  projectId?: string
-  /** Organization login for project discovery, when the project is org-owned. */
+  /** Legacy single-purpose view; the cascade UI sends the fields below instead. */
+  view?: ListView
+  /** Organization scope (`org:<login>` in search, owner for project/repo lookups). */
   org?: string
-  /** Open/closed/all filter applied where the view supports it. */
+  /** Repository scope: `owner/name` values. */
+  repos?: string[]
+  /** Projects v2 node id. */
+  projectId?: string
+  /** Assignee qualifier: `@me`, `all` (no qualifier), or a GitHub login. */
+  assignee?: string
+  /** Author qualifier (legacy "created by me"). */
+  author?: string
+  /** Open/closed/all filter. */
   state?: 'open' | 'closed' | 'all'
   first?: number
   after?: string | null
+}
+
+/** One organization (or the viewer's personal account) in the scope picker. */
+export interface OrgRefVM {
+  login: string
+  /** Display name, when GitHub reports one. */
+  name?: string
 }
 
 /** One repository in the scope picker. */
@@ -146,6 +173,16 @@ export interface RepoRefVM {
   nameWithOwner: string
   isPrivate: boolean
   pushedAt?: string
+  /** Whether this repository is a fork (kept in the list, marked in the UI). */
+  isFork?: boolean
+}
+
+/** One page of a repository listing. */
+export interface RepoPageVM {
+  items: RepoRefVM[]
+  totalCount: number
+  hasNextPage: boolean
+  endCursor: string | null
 }
 
 /** One Projects v2 project in the scope picker. */
@@ -160,9 +197,10 @@ export interface ProjectRefVM {
 /** Everything the scope pickers need. */
 export interface ScopeCatalog {
   viewer: { login: string; avatarUrl?: string } | null
-  orgs: string[]
+  /** Organizations the token can see, including private memberships. */
+  orgs: OrgRefVM[]
+  /** The viewer's repositories (forks included); org repositories load on demand. */
   repos: RepoRefVM[]
-  projects: ProjectRefVM[]
   /** True when projects could not be read because the token lacks `read:project`. */
   projectsBlocked: boolean
   projectsError?: string
@@ -190,13 +228,16 @@ export interface GitHubStatus {
 
 /** Preferences owned by the Host (persisted in the plugin's state file). */
 export interface Prefs {
-  view: ListView
-  /** Selected repository for the repo view. */
-  repo?: string | undefined
-  /** Selected project node id for the project view. */
-  projectId?: string | undefined
-  /** Organization login that owns the selected project. */
+  /** Legacy view key, migrated to the cascade fields on load. */
+  view?: ListView | undefined
+  /** Selected organization (`undefined` means all organizations). */
   org?: string | undefined
+  /** Selected Projects v2 node id. */
+  projectId?: string | undefined
+  /** Selected repository `owner/name` (filter within the org or the project). */
+  repo?: string | undefined
+  /** Assignee filter: `@me`, `all`, or a GitHub login. */
+  assignee: string
   /** Issue state filter. */
   state: 'open' | 'closed' | 'all'
   /** What a handoff does by default: fill the draft, or send it. */
@@ -217,15 +258,15 @@ export const DEFAULT_PROMPT_TEMPLATE = [
   '要求：先读 Issue 正文与关联 PR，确认验收标准后再动手；用 subagent_codex 执行具体改动，完成后跑相关测试并回报。',
 ].join('\n')
 
-/** Default preferences for a fresh install. */
+/** Default preferences for a fresh install: everything assigned to me that is open. */
 export const DEFAULT_PREFS: Prefs = {
-  view: 'assigned',
+  org: undefined,
+  projectId: undefined,
+  repo: undefined,
+  assignee: '@me',
   state: 'open',
   handoffMode: 'draft',
   promptTemplate: DEFAULT_PROMPT_TEMPLATE,
-  org: undefined,
-  repo: undefined,
-  projectId: undefined,
   pinned: undefined,
 }
 

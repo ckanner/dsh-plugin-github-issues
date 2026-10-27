@@ -12,28 +12,33 @@ import { test } from 'node:test'
 import { applyPrefsPatch, PrefsStore } from '../src/github/state.ts'
 import { DEFAULT_PREFS, DEFAULT_PROMPT_TEMPLATE } from '../src/vm.ts'
 
-test('unknown views and states keep the current value', () => {
-  const next = applyPrefsPatch(DEFAULT_PREFS, { view: 'bogus', state: 'nope', handoffMode: 'explode' })
-  assert.equal(next.view, DEFAULT_PREFS.view)
+test('unknown filters keep the current value', () => {
+  const next = applyPrefsPatch(DEFAULT_PREFS, { state: 'nope', handoffMode: 'explode', assignee: 'not a login!' })
   assert.equal(next.state, DEFAULT_PREFS.state)
   assert.equal(next.handoffMode, DEFAULT_PREFS.handoffMode)
+  assert.equal(next.assignee, DEFAULT_PREFS.assignee)
 })
 
 test('known patches are applied', () => {
   const next = applyPrefsPatch(DEFAULT_PREFS, {
-    view: 'project',
     state: 'all',
+    assignee: 'ckanner',
     handoffMode: 'send',
     repo: 'one2x-ai/mesh',
     projectId: 'PVT_1',
     org: 'one2x-ai',
   })
-  assert.equal(next.view, 'project')
   assert.equal(next.state, 'all')
+  assert.equal(next.assignee, 'ckanner')
   assert.equal(next.handoffMode, 'send')
   assert.equal(next.repo, 'one2x-ai/mesh')
   assert.equal(next.projectId, 'PVT_1')
   assert.equal(next.org, 'one2x-ai')
+})
+
+test('the two assignee sentinels survive validation', () => {
+  assert.equal(applyPrefsPatch(DEFAULT_PREFS, { assignee: '@me' }).assignee, '@me')
+  assert.equal(applyPrefsPatch(DEFAULT_PREFS, { assignee: 'all' }).assignee, 'all')
 })
 
 test('an empty string clears an optional selection', () => {
@@ -66,7 +71,7 @@ test('a fresh store answers with deployment defaults', () => {
     const prefs = store.load()
     assert.equal(prefs.handoffMode, 'send')
     assert.equal(prefs.promptTemplate, '{{repo}}')
-    assert.equal(prefs.view, DEFAULT_PREFS.view)
+    assert.equal(prefs.assignee, DEFAULT_PREFS.assignee)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -76,18 +81,18 @@ test('saving creates an owner-only directory, a 0600 file, and survives reload',
   const dir = join(mkdtempSync(join(tmpdir(), 'dsh-github-issues-')), 'nested')
   try {
     const store = new PrefsStore(dir, undefined, undefined)
-    const saved = store.save({ view: 'created', handoffMode: 'send', pinned: { repo: 'a/b', number: 3 } })
-    assert.equal(saved.view, 'created')
+    const saved = store.save({ state: 'closed', handoffMode: 'send', pinned: { repo: 'a/b', number: 3 } })
+    assert.equal(saved.state, 'closed')
     assert.equal(saved.handoffMode, 'send')
     const file = join(dir, 'state.json')
     const mode = statSync(file).mode & 0o777
     assert.equal(mode, 0o600, `expected 0600, got ${mode.toString(8)}`)
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as { version: number; prefs: { view: string } }
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as { version: number; prefs: { state: string } }
     assert.equal(parsed.version, 1)
-    assert.equal(parsed.prefs.view, 'created')
+    assert.equal(parsed.prefs.state, 'closed')
 
     const reloaded = new PrefsStore(dir, undefined, undefined)
-    assert.equal(reloaded.load().view, 'created')
+    assert.equal(reloaded.load().state, 'closed')
     assert.deepEqual(reloaded.load().pinned, { repo: 'a/b', number: 3 })
     assert.equal(reloaded.load().promptTemplate, DEFAULT_PROMPT_TEMPLATE)
   } finally {
@@ -99,11 +104,11 @@ test('a corrupt state file falls back to defaults instead of throwing', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-github-issues-'))
   try {
     const store = new PrefsStore(dir, undefined, undefined)
-    assert.equal(store.load().view, DEFAULT_PREFS.view)
+    assert.equal(store.load().assignee, DEFAULT_PREFS.assignee)
     // Write junk through the store's own path, then reload from disk.
     writeFileSync(join(dir, 'state.json'), '{not json', 'utf8')
     const reloaded = new PrefsStore(dir, undefined, undefined)
-    assert.equal(reloaded.load().view, DEFAULT_PREFS.view)
+    assert.equal(reloaded.load().assignee, DEFAULT_PREFS.assignee)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
