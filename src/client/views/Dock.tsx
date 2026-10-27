@@ -14,21 +14,21 @@ import type { DragEvent } from 'react'
 import type { Translate } from '../context.ts'
 import type { IssueCardVM, LinkedPRVM } from '../../vm.ts'
 import type { DockProps } from '../viewmodel.ts'
-import { Button, Chip, StyleSheet, TONE, CONTROLS_CSS } from './controls.tsx'
+import { Button, StyleSheet, TONE, CONTROLS_CSS } from './controls.tsx'
 import { ExternalGlyph, GitHubIcon } from './Icon.tsx'
 import { ISSUE_MIME } from './IssueRow.tsx'
 import {
-  checksGlyph, formatDue, prGlyph, prioritySourceLabel, priorityTone, reviewGlyph, stateTone,
-  summaryLine,
+  checksGlyph, prGlyph, reviewGlyph, stateTone, summaryLine,
 } from './format.ts'
 
 /** The stylesheet chunk owned by this module. */
 export const DOCK_CSS = `
-.ghd-strip{display:flex;align-items:center;gap:8px;box-sizing:border-box;width:100%;min-height:36px;padding:4px 10px;border:0.5px solid transparent;border-radius:var(--dsw-radius-md,8px);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
-.ghd-strip:hover{border-color:var(--dsw-alias-border-l2)}
-.ghd-issue[draggable=true]{cursor:grab}
+.ghd-strip{display:flex;align-items:center;gap:8px;box-sizing:border-box;width:100%;min-height:30px;margin:0 0 6px;padding:2px 8px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-1);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.ghd-strip:hover{border-color:var(--dsw-alias-border-l3)}
+.ghd-grip{flex:none;color:var(--dsw-alias-label-tertiary);cursor:grab;font-size:12px;line-height:1;letter-spacing:-1px}
+.ghd-issue[draggable=true]{cursor:grab;min-width:0}
 .ghd-issue[draggable=true]:active{cursor:grabbing}
-.ghd-hot{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-link));background:var(--dsw-alias-bg-layer-1)}
+.ghd-hot{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-link));background:var(--dsw-alias-bg-layer-2)}
 .ghd-label{flex:none;color:var(--dsw-alias-label-tertiary);white-space:nowrap}
 .ghd-issue{display:flex;align-items:center;gap:6px;min-width:0;flex:1}
 .ghd-dot{width:8px;height:8px;border-radius:50%;flex:none}
@@ -39,7 +39,6 @@ export const DOCK_CSS = `
 .ghd-pr:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .ghd-glyph{font-size:11px;line-height:1}
 .ghd-hint{flex:none;color:var(--dsw-alias-brand-primary,var(--dsw-alias-link));font-size:12px;white-space:nowrap}
-.ghd-empty{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:12px}
 .ghd-actions{display:flex;align-items:center;gap:6px;flex:none;margin-left:auto}
 .ghd-strip .gh-btn{height:24px;padding:0 8px;font-size:12px}
 .ghd-sep{width:0.5px;height:16px;background:var(--dsw-alias-border-l2);flex:none}
@@ -115,13 +114,17 @@ function PullRequestBadge({ pr, t }: PullRequestBadgeProps) {
 /**
  * The composer dock strip.
  * @param props - the panel snapshot, actions, composer callbacks, and translate function.
- * @returns the compact strip, or its empty hint when nothing is pinned.
+ * @returns the compact strip, or `null` while nothing is pinned.
  */
 export function GitHubDock({ snapshot, actions, t, composerReady, onInsert, onSend, onDropIssue, onDropText }: DockProps) {
   const [hot, setHot] = useState(false)
   const card = snapshot.pinnedCard
   const firstPR = card?.linkedPRs[0]
   const disabledTitle = composerReady ? undefined : t('dock.disabled')
+
+  // Nothing pinned: render nothing. This row sits above the composer on every
+  // turn, so an empty hint would be permanent clutter rather than an affordance.
+  if (card === undefined) return null
 
   /** Highlight the strip while a draggable issue hovers it. */
   const handleDragOver = (event: DragEvent<HTMLDivElement>): void => {
@@ -166,14 +169,7 @@ export function GitHubDock({ snapshot, actions, t, composerReady, onInsert, onSe
       <GitHubIcon size={14} active={hot} />
       <span className="ghd-label">{t('dock.pinned')}</span>
 
-      {card === undefined
-        ? (
-          <span className={hot ? 'ghd-hint' : 'ghd-empty'}>
-            {hot ? t('dock.drop') : t('dock.empty')}
-          </span>
-        )
-        : (
-          <>
+      <>
             <div
               className="ghd-issue"
               draggable
@@ -184,6 +180,7 @@ export function GitHubDock({ snapshot, actions, t, composerReady, onInsert, onSe
                 event.dataTransfer.effectAllowed = 'copy'
               }}
             >
+              <span className="ghd-grip" aria-hidden="true">⠿</span>
               <span
                 className="ghd-dot"
                 style={{ background: TONE[stateTone(card.state, card.stateReason)].dot }}
@@ -193,24 +190,6 @@ export function GitHubDock({ snapshot, actions, t, composerReady, onInsert, onSe
                 {card.repo}#{card.number}
               </a>
               <span className="ghd-title" title={card.title}>{card.title}</span>
-              {card.priority !== undefined && (
-                <Chip
-                  label={card.priority.name}
-                  tone={priorityTone(card.priority.name)}
-                  dot
-                  title={`${t('panel.priority')} · ${t(prioritySourceLabel(card.priority.source))}`}
-                />
-              )}
-              {card.milestone !== undefined && (
-                <Chip
-                  label={card.milestone.title}
-                  tone="info"
-                  dot
-                  title={card.milestone.dueOn === null
-                    ? t('panel.milestone')
-                    : t('panel.due', { date: formatDue(card.milestone.dueOn) })}
-                />
-              )}
               {firstPR !== undefined && <PullRequestBadge pr={firstPR} t={t} />}
             </div>
 
@@ -248,8 +227,7 @@ export function GitHubDock({ snapshot, actions, t, composerReady, onInsert, onSe
                 <ExternalGlyph size={13} />
               </a>
             </div>
-          </>
-        )}
+      </>
     </div>
   )
 }

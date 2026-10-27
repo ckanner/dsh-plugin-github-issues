@@ -175,10 +175,10 @@ assert.deepEqual(
   [
     'main:github',
     'sidebar.panellist:github',
-    'conversation.composer.dock:github-issues-handoff',
+    'conversation.input.dock:github-issues-handoff',
     'settings.section:github-issues',
   ],
-  'the bundle must contribute the panel page, rail icon, composer dock, and settings section',
+  'the bundle must contribute the panel page, rail icon, handoff strip, and settings section',
 )
 
 assert.equal(mounted.length, 1, 'the bundle must mount exactly one Remote contribution')

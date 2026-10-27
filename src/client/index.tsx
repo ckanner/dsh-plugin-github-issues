@@ -61,8 +61,12 @@ export function apply(ctx: ClientContext): void {
     label: () => t('panel'),
   }, GitHubRailIcon))
 
-  ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
-    name: 'conversation.composer.dock',
+  // `conversation.input.dock` is the full-width seat above the composer card.
+  // The strip must not share the compact dock row below the composer with the
+  // shipped activity/usage pills: it is a full-width bar, and there it pushed
+  // those chips out of view.
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
     id: 'github-issues-handoff',
     order: 30,
     locale: NS,

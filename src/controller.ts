@@ -205,10 +205,15 @@ export class GitHubIssuesController extends TypertRemoteService {
     return this.options.prefs.save(patch)
   }
 
-  /** Drop cached GitHub responses so the next request refetches. */
+  /**
+   * Drop cached GitHub responses and the resolved token so the next request
+   * refetches. The token is re-resolved too: the user may have just granted a
+   * scope (`gh auth refresh -s read:project`) and the Host must see it at once,
+   * not after the five-minute token TTL.
+   */
   @Remote
   async refresh(): Promise<{ ok: true }> {
-    this.api?.invalidate('all')
+    this.forgetAuth()
     return { ok: true }
   }
 }

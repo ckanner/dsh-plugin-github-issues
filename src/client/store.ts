@@ -197,9 +197,11 @@ export class GitHubStore implements PanelActions {
         loading: false,
         loadingMore: false,
         error: undefined,
-        projectsBlocked: this.snapshot.prefs.view === 'project' && page.notice !== undefined
-          ? true
-          : this.snapshot.projectsBlocked,
+        // `projectsBlocked` is an authorization fact (status + catalog), never a
+        // list notice: an empty project view legitimately carries "select a
+        // project" as its notice, and polling must not turn that into a scope
+        // warning.
+        projectsBlocked: this.snapshot.projectsBlocked,
       })
       this.refreshPinnedCard()
     } catch (error) {
