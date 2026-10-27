@@ -1,0 +1,20 @@
+# The dsh-plugin-github-issues bundle patch.
+#
+# One row: the plugin that owns the GitHub Issues panel, the composer dock
+# handoff strip, and the GitHub settings page. `authMode: gh` reuses the
+# already-authenticated `gh` CLI (the token never leaves the Host process and
+# is never written to this file). `stateDir` holds only non-secret UI state.
+#
+# Projects v2 additionally needs `read:project` on the token — the settings page
+# shows the exact one-line command (`gh auth refresh -h github.com -s read:project`)
+# instead of the plugin escalating auth itself.
+
+- insert:
+    - id: github-issues
+      name: 'dsh-plugin-github-issues'
+      config:
+        authMode: gh
+        host: github.com
+        handoffMode: draft
+        pollSeconds: 90
+        stateDir: !!js (process.env.DSH_HOME ?? process.env.HOME + '/.dsh') + '/github-issues'

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GitHub Issues",
+    "description": "跨仓库/项目管理并展示 GitHub Issue：里程碑、标签、优先级、关联 PR 状态；可把 Issue 拖进输入框交给 Agent 处理。"
+  }
+}
