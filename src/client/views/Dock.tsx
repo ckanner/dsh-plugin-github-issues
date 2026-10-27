@@ -26,6 +26,8 @@ import {
 export const DOCK_CSS = `
 .ghd-strip{display:flex;align-items:center;gap:8px;box-sizing:border-box;width:100%;min-height:36px;padding:4px 10px;border:0.5px solid transparent;border-radius:var(--dsw-radius-md,8px);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .ghd-strip:hover{border-color:var(--dsw-alias-border-l2)}
+.ghd-issue[draggable=true]{cursor:grab}
+.ghd-issue[draggable=true]:active{cursor:grabbing}
 .ghd-hot{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-link));background:var(--dsw-alias-bg-layer-1)}
 .ghd-label{flex:none;color:var(--dsw-alias-label-tertiary);white-space:nowrap}
 .ghd-issue{display:flex;align-items:center;gap:6px;min-width:0;flex:1}
@@ -172,7 +174,16 @@ export function GitHubDock({ snapshot, actions, t, composerReady, onInsert, onSe
         )
         : (
           <>
-            <div className="ghd-issue">
+            <div
+              className="ghd-issue"
+              draggable
+              title={t('dock.drag')}
+              onDragStart={(event: DragEvent<HTMLDivElement>) => {
+                event.dataTransfer.setData(TEXT_MIME, actions.promptText(card))
+                event.dataTransfer.setData(ISSUE_MIME, JSON.stringify(card))
+                event.dataTransfer.effectAllowed = 'copy'
+              }}
+            >
               <span
                 className="ghd-dot"
                 style={{ background: TONE[stateTone(card.state, card.stateReason)].dot }}
