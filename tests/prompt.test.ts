@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { renderPrompt } from '../src/prompt.ts'
+import { composeHandoffPrompt, EMPTY_DRAFT_HOLD, renderPrompt } from '../src/prompt.ts'
 import { DEFAULT_PROMPT_TEMPLATE, type IssueCardVM } from '../src/vm.ts'
 
 /** One field override; `undefined` is meaningful (it removes the value). */
@@ -100,4 +100,22 @@ test('an oversized prompt is truncated with a marker', () => {
 test('an empty template falls back to the built-in one', () => {
   const text = renderPrompt(card(), '')
   assert.match(text, /处理 GitHub Issue/)
+})
+
+test('an empty composer sends only the card prompt', () => {
+  assert.equal(composeHandoffPrompt('ISSUE PROMPT', EMPTY_DRAFT_HOLD), 'ISSUE PROMPT')
+})
+
+test('the user text is appended after the prompt', () => {
+  assert.equal(
+    composeHandoffPrompt('ISSUE PROMPT', `${EMPTY_DRAFT_HOLD}先把测试跑一遍`),
+    'ISSUE PROMPT\n\n先把测试跑一遍',
+  )
+})
+
+test('surrounding blank lines and the placeholder are stripped', () => {
+  assert.equal(
+    composeHandoffPrompt('P', `\n\u200b\n  hello  \n\n`),
+    'P\n\nhello',
+  )
 })

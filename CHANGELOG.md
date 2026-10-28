@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.3 (unreleased)
+
+- The pending issue card now *is* the prompt: the composer stays empty (only an
+  invisible placeholder keeps the native send enabled), the user may type extra
+  instructions, and clicking send or pressing Enter converts the card into the
+  rendered issue prompt plus the user's text and submits it. The card disappears
+  and the linked chip appears below once the send is observed.
+- Clearing the input or removing the card still withdraws the handoff and writes
+  no link.
+- `composeHandoffPrompt` is a pure, unit-tested helper; the send gesture is
+  intercepted at the native submit button and the editor's Enter key.
+
 ## 0.4.2 (unreleased)
 
 - The pending issue now renders as a small chip inside the composer card itself

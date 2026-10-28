@@ -45,7 +45,7 @@ export function GitHubPendingChip(props: {
   return (
     <div className="ghp3-row" data-github-pending>
       <StyleSheet chunks={[CONTROLS_CSS, PENDING_CSS]} />
-      <button type="button" className="ghp3-chip" title={`${ref} · ${card.title}`} onClick={onOpenPanel}>
+      <button type="button" className="ghp3-chip" title={`${ref} · ${card.title}\n${t('pending.tip')}`} onClick={onOpenPanel}>
         <GitHubIcon size={12} />
         <span className="ghp3-ref">{ref}</span>
         <span className="ghp3-state" style={{ color: TONE[tone].fg }}>{t(stateLabelKey(card.state))}</span>

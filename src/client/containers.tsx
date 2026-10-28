@@ -17,6 +17,7 @@ import type {
 } from './context.ts'
 import type { GitHubStore } from './store.ts'
 import type { IssueCardVM, IssueLinkRecord } from '../vm.ts'
+import { composeHandoffPrompt, EMPTY_DRAFT_HOLD } from '../prompt.ts'
 import type { ComposerIssueChip, SessionLinkView } from './viewmodel.ts'
 import { GitHubDock } from './views/Dock.tsx'
 import { GitHubDropZone } from './views/DropZone.tsx'
@@ -166,10 +167,11 @@ export function DockHost({ store, t, runtime, sessionId }: ContainerProps & Sess
 /**
  * The pending handoff chip inside the composer card (`conversation.input.overlay`).
  *
- * This component owns the staging: it consumes a pending handoff stamped for this
- * Session, writes the prompt into the composer with a leading blank line (so the
- * chip sits on the first line like an attachment row), records the link only on
- * an observed send, and withdraws the chip when the draft is emptied or replaced.
+ * The card carries the issue; the input stays empty for the user's own words. On
+ * send (the native submit button or Enter) this component intercepts the gesture,
+ * turns the card into the rendered issue prompt, appends whatever the user typed,
+ * and submits that. Clearing the input withdraws the card without linking; the
+ * link is recorded only after the send is observed.
  */
 export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime } & SessionKit) {
   const snapshot = usePanel(store)
@@ -178,8 +180,12 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
   const markerSeen = useRef(false)
   /** The composer left `plain` while the marker was present: a send, not a manual clear. */
   const submitSeen = useRef(false)
+  /** Guard against a double interception while the prepared draft is being submitted. */
+  const sending = useRef(false)
   const marker = pending === undefined ? '' : `${pending.repo}#${String(pending.number)}`
   const input = useInput === undefined ? undefined : useInput(state => state)
+  const latestInput = useRef(input)
+  latestInput.current = input
 
   // The handoff stamped for this Session: stage it inside the composer once.
   useEffect(() => {
@@ -187,11 +193,12 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
     if (card === undefined) return
     markerSeen.current = false
     submitSeen.current = false
+    sending.current = false
     setPending(card)
-    if (inputActions !== undefined) inputActions.setDraft(`\n${store.promptFor(card)}`)
+    if (inputActions !== undefined) inputActions.setDraft(EMPTY_DRAFT_HOLD)
   }, [snapshot.pendingHandoff, snapshot.pendingHandoffSession, inputActions, sessionId, store])
 
-  // Link only on an observed send; clearing the draft withdraws the pending chip.
+  // Link only on an observed send; an emptied draft withdraws the pending card.
   useEffect(() => {
     if (pending === undefined || input === undefined || sessionId === undefined) return
     const text = input.draft
@@ -204,14 +211,73 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
       setPending(undefined)
       markerSeen.current = false
       submitSeen.current = false
+      sending.current = false
+      return
+    }
+    if (text === '') {
+      // The user emptied the composer: withdraw the card, link nothing.
+      setPending(undefined)
+      markerSeen.current = false
+      submitSeen.current = false
+      sending.current = false
       return
     }
     if (markerSeen.current && !text.includes(marker)) {
       setPending(undefined)
       markerSeen.current = false
       submitSeen.current = false
+      sending.current = false
     }
   }, [input, pending, marker, sessionId, store])
+
+  // The card is not text yet: intercept the native send gesture and compose.
+  useEffect(() => {
+    if (pending === undefined || inputActions === undefined) return
+    const composerCard = (): HTMLElement | null => {
+      const chip = document.querySelector('[data-github-pending]')
+      const anchor = chip?.closest('[data-composer-overlay]')
+      return anchor?.parentElement ?? null
+    }
+    const submitButton = (card: HTMLElement): Element | undefined => {
+      const buttons = [...card.querySelectorAll('button')]
+      return buttons.find(button => /_primary(\s|$)/.test(String(button.className)))
+        ?? buttons[buttons.length - 1]
+    }
+    const send = (): void => {
+      if (sending.current) return
+      sending.current = true
+      const composed = composeHandoffPrompt(store.promptFor(pending), latestInput.current?.draft ?? '')
+      inputActions.setDraft(composed)
+      // Let the draft commit before asking the composer to submit it.
+      window.setTimeout(() => { inputActions.submit() }, 16)
+    }
+    const onClick = (event: MouseEvent): void => {
+      const card = composerCard()
+      if (card === null) return
+      const button = (event.target as Element | null)?.closest('button')
+      if (button === null || button === undefined || button.closest('[data-github-pending]') !== null) return
+      if (button !== submitButton(card)) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      send()
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
+      const card = composerCard()
+      if (card === null) return
+      const target = event.target as Element | null
+      if (target === null || !card.contains(target) || target.closest('[data-github-pending]') !== null) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      send()
+    }
+    document.addEventListener('click', onClick, true)
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      document.removeEventListener('click', onClick, true)
+      document.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [pending, inputActions, store])
 
   if (pending === undefined) return null
   return (
@@ -223,6 +289,7 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
         setPending(undefined)
         markerSeen.current = false
         submitSeen.current = false
+        sending.current = false
         inputActions?.setDraft('')
       }}
     />

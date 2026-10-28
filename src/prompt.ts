@@ -71,3 +71,21 @@ export function renderPrompt(issue: PromptIssue, template: string): string {
   if (text.length > 8_000) return `${text.slice(0, 7_990)}\n…（已截断）`
   return text
 }
+
+/** The invisible draft placeholder that keeps the native send enabled. */
+export const EMPTY_DRAFT_HOLD = '\u200b\n'
+
+/**
+ * Compose the message a pending issue card sends.
+ *
+ * The card carries the issue prompt; the user's own words are optional and are
+ * appended after a blank line. The invisible composer placeholder is stripped.
+ *
+ * @param prompt - the rendered issue prompt from the card.
+ * @param memo - the user's text from the composer (may contain the placeholder).
+ * @returns the text to submit.
+ */
+export function composeHandoffPrompt(prompt: string, memo: string): string {
+  const extra = memo.replace(/\u200b/g, '').replace(/^\n+/, '').trim()
+  return extra === '' ? prompt : `${prompt}\n\n${extra}`
+}
