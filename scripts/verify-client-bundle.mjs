@@ -175,7 +175,7 @@ assert.deepEqual(
   [
     'main:github',
     'sidebar.panellist:github',
-    'conversation.input.dock:github-issues-handoff',
+    'conversation.composer.dock:github-issues-handoff',
     'settings.section:github-issues',
   ],
   'the bundle must contribute the panel page, rail icon, handoff strip, and settings section',

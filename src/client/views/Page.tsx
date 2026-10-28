@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useId, useMemo, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { IssueCardVM, Prefs } from '../../vm.ts'
 import type { PageProps } from '../viewmodel.ts'
 import {
@@ -78,11 +78,13 @@ export const PAGE_CSS = `
 .ghp-h1{margin:0;font-size:20px;line-height:28px;font-weight:500;color:var(--dsw-alias-label-primary)}
 .ghp-subtitle{margin-top:2px;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}
 .ghp-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.ghp-scope{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:18px}
-.ghp-scope .gh-select-wrap{min-width:132px;max-width:240px}
-.ghp-combo{display:flex;flex-direction:column;gap:2px;min-width:220px;max-width:320px}
-.ghp-combo .gh-field-label{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary);padding-left:2px}
-.ghp-combo input{height:30px;box-sizing:border-box;padding:0 8px;width:100%}
+.ghp-scope{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px 16px;align-items:end;margin-top:18px}
+.ghp-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ghp-field-label{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ghp-field .gh-select-wrap{width:100%;min-width:0}
+.ghp-field .gh-select-wrap .gh-field-label{display:none}
+.ghp-field .gh-select{width:100%;height:30px;box-sizing:border-box}
+.ghp-field .gh-input{width:100%;height:30px;box-sizing:border-box}
 .ghp-notice{display:flex;flex-direction:column;gap:6px;box-sizing:border-box;width:100%;padding:10px 12px;border:0.5px solid var(--dsw-alias-state-warn-primary);border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-state-warn-tertiary,var(--dsw-alias-bg-layer-1));font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);margin-top:12px}
 .ghp-filters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0 8px}
 .ghp-search{display:flex;align-items:center;gap:6px;flex:1;min-width:180px;max-width:360px;height:32px;padding:0 4px 0 10px;box-sizing:border-box;border:0.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md,8px);color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-base)}
@@ -117,6 +119,21 @@ interface ComboOption {
 }
 
 /**
+ * One labelled control in the scope grid. The label sits above every control so
+ * selects and the repository combobox share one baseline.
+ * @param props - label and the control.
+ * @returns the labelled field cell.
+ */
+function Field(props: { label: string, children: ReactNode }) {
+  return (
+    <div className="ghp-field">
+      <span className="ghp-field-label">{props.label}</span>
+      {props.children}
+    </div>
+  )
+}
+
+/**
  * A searchable picker: a text input backed by a native `<datalist>`.
  * @param props - label, current selection, options, and the change callback.
  * @returns the labelled combobox.
@@ -128,9 +145,8 @@ function ScopeCombo(props: {
   options: readonly ComboOption[]
   disabled?: boolean
   onChange: (value: string | undefined) => void
-  t: PageProps['t']
 }) {
-  const { label, value, placeholder, options, disabled, onChange, t } = props
+  const { label, value, placeholder, options, disabled, onChange } = props
   const listId = useId()
   const selected = options.find(option => option.value === value)
   const [text, setText] = useState(selected?.label ?? '')
@@ -142,8 +158,7 @@ function ScopeCombo(props: {
   }, [value, options])
 
   return (
-    <label className="ghp-combo">
-      <span className="gh-field-label">{label}</span>
+    <>
       <input
         className="gh-input"
         list={listId}
@@ -170,8 +185,7 @@ function ScopeCombo(props: {
       <datalist id={listId}>
         {options.map(option => <option key={option.value} value={option.label} />)}
       </datalist>
-      <span className="ghp-muted">{t('panel.comboHint', { count: options.length })}</span>
-    </label>
+    </>
   )
 }
 
@@ -266,43 +280,48 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
         </header>
 
         <div className="ghp-scope">
-          <Select
-            label={t('panel.org')}
-            ariaLabel={t('panel.org')}
-            value={prefs.org ?? ''}
-            options={orgOptions}
-            onChange={value => actions.setOrg(value === '' ? undefined : value)}
-          />
-          <Select
-            label={t('panel.project')}
-            ariaLabel={t('panel.project')}
-            value={prefs.org === undefined ? '' : prefs.projectId ?? ''}
-            options={projectOptions}
-            disabled={prefs.org === undefined || snapshot.projectsBlocked}
-            onChange={value => actions.setProject(value === '' ? undefined : value)}
-          />
-          <ScopeCombo
-            label={t('panel.repoFilter')}
-            value={prefs.repo}
-            placeholder={t('panel.allRepos')}
-            options={repoOptions}
-            onChange={repo => actions.setRepo(repo)}
-            t={t}
-          />
-          <Select
-            label={t('panel.assignee')}
-            ariaLabel={t('panel.assignee')}
-            value={prefs.assignee}
-            options={assigneeOptions}
-            onChange={value => actions.setAssignee(value)}
-          />
-          <Select
-            label={t('panel.stateFilter')}
-            ariaLabel={t('panel.stateFilter')}
-            value={prefs.state}
-            options={stateOptions}
-            onChange={value => actions.setStateFilter(value as Prefs['state'])}
-          />
+          <Field label={t('panel.org')}>
+            <Select
+              ariaLabel={t('panel.org')}
+              value={prefs.org ?? ''}
+              options={orgOptions}
+              onChange={value => actions.setOrg(value === '' ? undefined : value)}
+            />
+          </Field>
+          <Field label={t('panel.project')}>
+            <Select
+              ariaLabel={t('panel.project')}
+              value={prefs.org === undefined ? '' : prefs.projectId ?? ''}
+              options={projectOptions}
+              disabled={prefs.org === undefined || snapshot.projectsBlocked}
+              onChange={value => actions.setProject(value === '' ? undefined : value)}
+            />
+          </Field>
+          <Field label={t('panel.repoFilter')}>
+            <ScopeCombo
+              label={t('panel.repoFilter')}
+              value={prefs.repo}
+              placeholder={prefs.org === undefined ? t('panel.allRepos') : `${t('panel.allRepos')}（${String(repoOptions.length)}）`}
+              options={repoOptions}
+              onChange={repo => actions.setRepo(repo)}
+            />
+          </Field>
+          <Field label={t('panel.assignee')}>
+            <Select
+              ariaLabel={t('panel.assignee')}
+              value={prefs.assignee}
+              options={assigneeOptions}
+              onChange={value => actions.setAssignee(value)}
+            />
+          </Field>
+          <Field label={t('panel.stateFilter')}>
+            <Select
+              ariaLabel={t('panel.stateFilter')}
+              value={prefs.state}
+              options={stateOptions}
+              onChange={value => actions.setStateFilter(value as Prefs['state'])}
+            />
+          </Field>
         </div>
 
         {prefs.org === undefined && (
