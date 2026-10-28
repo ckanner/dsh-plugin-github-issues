@@ -134,6 +134,8 @@ const namespace = {
   refresh: () => Promise.resolve({ ok: true, value: { ok: true } }),
 }
 
+const injectCalls = []
+const tabTypes = []
 const ctx = {
   remote: {
     $mount(contribution) {
@@ -162,6 +164,22 @@ const ctx = {
     const dispose = callback()
     disposers.push(dispose)
   },
+  inject(deps, callback) {
+    injectCalls.push(deps)
+    const scoped = {
+      ...ctx,
+      get: ctx.get,
+      effect: ctx.effect,
+      slots: ctx.slots,
+      sidebarRightTabs: {
+        register(definition) {
+          tabTypes.push(definition)
+          return () => {}
+        },
+      },
+    }
+    callback(scoped)
+  },
   layout: { selectPanel() {} },
 }
 
@@ -177,9 +195,15 @@ assert.deepEqual(
     'sidebar.panellist:github',
     'conversation.composer.dock:github-issues-handoff',
     'settings.section:github-issues',
+    'conversation.input.dock:github-issues-drop',
+    'sidebar.right.pane.tab:github-issues',
   ],
-  'the bundle must contribute the panel page, rail icon, handoff strip, and settings section',
+  'the bundle must contribute the panel page, rail icon, chip row, settings section, drop zone, and right-sidebar page',
 )
+
+assert.deepEqual(injectCalls, [['sidebarRightTabs']], 'the right-sidebar page must wait for its optional service')
+assert.deepEqual(tabTypes.map(type => `${type.id}:${type.kind}`), ['github-issues:github-issues'])
+assert.equal(tabTypes[0].guide.length, 1, 'the right-sidebar page needs one guide entry to be openable')
 
 assert.equal(mounted.length, 1, 'the bundle must mount exactly one Remote contribution')
 assert.equal(mounted[0].package, packageName)

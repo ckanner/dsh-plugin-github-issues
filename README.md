@@ -5,8 +5,9 @@ Browse GitHub issues and hand one to the agent — inside DeepSeek Harness.
 This plugin adds a **GitHub panel** to the DSH Web GUI: pick a repository or a
 Projects v2 board, read the issues assigned to you (or created by you, or all
 open), and see each issue's state, milestone, labels, priority, assignees, and
-linked pull-request status. Drag an issue into the composer — or use the handoff
-strip under it — to give the agent a well-formed task prompt.
+linked pull-request status. Open the `Issues` tab in the right column and drag
+an issue into the composer — or use a one-click handoff — to give the agent a
+well-formed task prompt.
 
 It is **read-only**: the plugin never writes to GitHub.
 
@@ -15,7 +16,8 @@ It is **read-only**: the plugin never writes to GitHub.
 | Surface | Where | What |
 |---|---|---|
 | GitHub panel | left rail icon → `main` panel | filter, list, detail (body, milestone progress, labels, priority, assignees, linked/mentioned PRs with checks and review state) |
-| Handoff strip | under the composer | the pinned issue, one click to fill the draft or send, drag-and-drop target |
+| Handoff chip | composer dock, under the input | the session's issue as `org/repo#number`; click it for a detail popover, drag issues here from the right column |
+| Issues right column | right sidebar tab | the same filtered issue list beside the Conversation; drag a row into the composer to hand it over |
 | GitHub settings | Settings → GitHub | `gh` auth status and scopes, handoff behavior, prompt template |
 
 ## Requirements

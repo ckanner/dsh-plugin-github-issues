@@ -15,8 +15,10 @@ import { renderToString } from 'react-dom/server'
 
 import { GitHubDock } from '../src/client/views/Dock.tsx'
 import { GitHubIcon } from '../src/client/views/Icon.tsx'
+import { GitHubDropZone } from '../src/client/views/DropZone.tsx'
 import { GitHubPage } from '../src/client/views/Page.tsx'
 import { GitHubSettings } from '../src/client/views/Settings.tsx'
+import { GitHubSidebar } from '../src/client/views/Sidebar.tsx'
 import type { PanelActions, PanelSnapshot } from '../src/client/viewmodel.ts'
 import type { Translate } from '../src/client/context.ts'
 import type { IssueCardVM, IssueDetailVM, Prefs } from '../src/vm.ts'
@@ -235,6 +237,37 @@ expectMarkup('dock: no chips (renders nothing)', (
     onOpenChip={() => {}}
   />
 ), true)
+expectMarkup('sidebar: list', <GitHubSidebar snapshot={snapshot()} actions={actions} t={t} />)
+expectMarkup('sidebar: loading', (
+  <GitHubSidebar snapshot={snapshot({ list: undefined, loading: true })} actions={actions} t={t} />
+))
+expectMarkup('sidebar: dragging row', (
+  <GitHubSidebar snapshot={snapshot({ dragging: card() })} actions={actions} t={t} />
+))
+expectMarkup('drop zone: hidden', <GitHubDropZone dragging={undefined} t={t} onDrop={() => {}} onCancel={() => {}} />, true)
+expectMarkup('drop zone: visible', (
+  <GitHubDropZone dragging={card()} t={t} onDrop={() => {}} onCancel={() => {}} />
+))
 expectMarkup('settings', <GitHubSettings snapshot={snapshot()} actions={actions} t={t} resolveSession={resolveSession} />)
 expectMarkup('icon', <GitHubIcon size={16} active />)
+const linked = renderToString(
+  <GitHubDock
+    snapshot={snapshot()}
+    actions={actions}
+    t={t}
+    resolveSession={resolveSession}
+    composerReady
+    onInsert={() => {}}
+    onSend={() => {}}
+    onDropIssue={() => {}}
+    onDropText={() => {}}
+    chips={[{ card: card(), state: 'linked', sessions: [resolveSession('session-1')] }]}
+    onRemoveChip={() => {}}
+    onOpenChip={() => {}}
+  />,
+)
+if (!linked.includes('one2x-ai/mesh#2469')) {
+  throw new Error('the linked chip must show the organization/repository and number')
+}
+console.log('ok chip label (organization/repository#number)')
 console.log('render smoke passed')

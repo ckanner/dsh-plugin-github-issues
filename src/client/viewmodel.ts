@@ -54,6 +54,8 @@ export interface PanelSnapshot {
   links: IssueLinkRecord[]
   /** Linked issues resolved to cards, keyed `owner/repo#number`. */
   linkCards: Record<string, IssueCardVM>
+  /** The issue currently being dragged out of the right-sidebar list. */
+  dragging?: IssueCardVM | undefined
 }
 
 /** One session an issue has been handed to, resolved for display. */
@@ -124,6 +126,14 @@ export interface PanelActions {
   unlinkSession(card: IssueCardVM, sessionId?: string): void
   /** Open the GitHub panel focused on one issue. */
   openInPanel(card: IssueCardVM): void
+  /** Open (or focus) the co-visible right-sidebar issue tab. */
+  openInSidebar(): void
+  /** Start dragging one issue out of the right-sidebar list. */
+  dragIssue(card: IssueCardVM): void
+  /** End the drag without handing the issue over. */
+  endDrag(): void
+  /** Hand the currently dragged issue to the agent (fills the composer draft). */
+  dropHandoff(): void
 }
 
 /** Props of the full-page panel. */
@@ -156,6 +166,24 @@ export interface DockProps extends PageProps {
   onRemoveChip(chip: ComposerIssueChip): void
   /** Open the GitHub panel focused on a chip's issue. */
   onOpenChip(chip: ComposerIssueChip): void
+}
+
+/** Props of the co-visible right-sidebar issue list. */
+export interface SidebarProps {
+  snapshot: PanelSnapshot
+  actions: PanelActions
+  t: Translate
+}
+
+/** Props of the handoff drop target shown above the composer while dragging. */
+export interface DropZoneProps {
+  /** The issue being dragged, or `undefined` while no drag is in flight. */
+  dragging: IssueCardVM | undefined
+  t: Translate
+  /** Hand the dragged issue to the agent. */
+  onDrop(): void
+  /** Abandon the drag. */
+  onCancel(): void
 }
 
 /** Props of the settings page section. */

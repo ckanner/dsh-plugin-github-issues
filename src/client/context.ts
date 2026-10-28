@@ -39,6 +39,16 @@ export interface SlotRegistrationOptions {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SlotEntry = ComponentType<any> | (() => ReactNode)
 
+/**
+ * Cordis dynamic service injection: run `callback` in a scoped context once all
+ * listed services are available, and dispose its registrations with the plugin.
+ * Used for services a profile may omit (the right sidebar), so their absence
+ * never keeps the core panel from activating.
+ */
+export interface ContextInject {
+  inject(deps: string[], callback: (scoped: ClientContext) => void): () => void
+}
+
 /** The browser slot registry. */
 export interface SlotService {
   /** Run `register` for every occurrence of one slot key. */
@@ -177,6 +187,20 @@ export interface ClientRuntime {
   getService(name: string): unknown
 }
 
+/** A right-sidebar page type, as the sidebar-right plugin's registry accepts it. */
+export interface SidebarRightTabsService {
+  /** Register one tab type for the caller's lifetime. */
+  register(definition: {
+    id: string
+    kind: string
+    title(address: string): string
+    priority?: 'builtin' | 'extension' | 'fallback'
+    multiple?: boolean
+    patterns?: string[]
+    guide?: { id: string, title(): string, order?: number }[]
+  }): () => void
+}
+
 /** The client plugin context. */
 export interface ClientContext {
   /** Read one service by key (used for the plugin's own Remote namespace). */
@@ -190,12 +214,11 @@ export interface ClientContext {
    * @param name - optional label shown in cordis diagnostics.
    */
   effect(callback: () => () => void, name?: string): () => void
+  /** Run registrations in a scope that waits for the listed services. */
+  inject(deps: string[], callback: (scoped: ClientContext) => void): () => void
   layout?: LayoutService
   uiWorkspace?: UiWorkspaceService
   sessions?: SessionsService
-  /** Session and workspace catalogs, projected for the panel's session badges. */
-  sessionCatalog?: SnapshotSource<SessionsSnapshot>
-  workspaceCatalog?: SnapshotSource<WorkspacesSnapshot>
 }
 
 /** The standard session props a `scope: session` slot component receives. */

@@ -78,7 +78,7 @@ export const PAGE_CSS = `
 .ghp-h1{margin:0;font-size:20px;line-height:28px;font-weight:500;color:var(--dsw-alias-label-primary)}
 .ghp-subtitle{margin-top:2px;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}
 .ghp-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.ghp-scope{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px 16px;align-items:end;margin-top:18px}
+.ghp-scope{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end;margin-top:18px}
 .ghp-field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .ghp-field-label{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ghp-field .gh-select-wrap{width:100%;min-width:0}
@@ -272,6 +272,9 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
             )}
           </div>
           <div className="ghp-head-actions">
+            <Button variant="ghost" onClick={() => actions.openInSidebar()}>
+              {t('panel.openSidebar')}
+            </Button>
             <Button variant="outline" onClick={() => actions.refresh()} disabled={snapshot.loading}>
               {snapshot.loading ? <Spinner size={12} /> : <RefreshGlyph size={13} />}
               {snapshot.loading ? t('panel.loading') : t('panel.refresh')}

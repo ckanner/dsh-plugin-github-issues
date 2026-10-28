@@ -19,9 +19,11 @@ import type { GitHubStore } from './store.ts'
 import type { IssueCardVM, IssueLinkRecord } from '../vm.ts'
 import type { ComposerIssueChip, SessionLinkView } from './viewmodel.ts'
 import { GitHubDock } from './views/Dock.tsx'
+import { GitHubDropZone } from './views/DropZone.tsx'
 import { GitHubIcon } from './views/Icon.tsx'
 import { GitHubPage } from './views/Page.tsx'
 import { GitHubSettings } from './views/Settings.tsx'
+import { GitHubSidebar } from './views/Sidebar.tsx'
 
 /** Props every container receives through the slot's `inject`. */
 interface ContainerProps {
@@ -235,6 +237,60 @@ export function DockHost({ store, t, runtime, inputActions, sessionId, useInput 
         if (sessionId !== undefined) void store.unlinkSession(chip.card, sessionId)
       }}
       onOpenChip={chip => store.openInPanel(chip.card)}
+    />
+  )
+}
+
+/** The co-visible right-sidebar list; rows drag into the composer drop target. */
+export function SidebarHost({ store, t }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime }) {
+  const snapshot = usePanel(store)
+  return <GitHubSidebar snapshot={snapshot} actions={store} t={t} />
+}
+
+/**
+ * The handoff drop target in `conversation.input.dock`.
+ *
+ * It only renders while a drag is in flight. While it is mounted the whole window
+ * accepts the drop (so the user can release over the composer card, the
+ * transcript, or the bar itself); a drop inside the right sidebar is treated as a
+ * cancel so dragging back where it started never hands the issue over.
+ */
+export function DropZoneHost({ store, t }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime }) {
+  const snapshot = usePanel(store)
+  const dragging = snapshot.dragging === undefined ? undefined : snapshot.dragging
+  useEffect(() => {
+    if (dragging === undefined) return
+    const onDragOver = (event: DragEvent): void => {
+      event.preventDefault()
+      if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'copy'
+    }
+    const onDrop = (event: DragEvent): void => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('[data-github-sidebar]') !== null && target !== null) {
+        event.preventDefault()
+        store.endDrag()
+        return
+      }
+      event.preventDefault()
+      store.dropHandoff()
+    }
+    const onDragEnd = (): void => { store.endDrag() }
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('drop', onDrop)
+    window.addEventListener('dragend', onDragEnd)
+    return () => {
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('drop', onDrop)
+      window.removeEventListener('dragend', onDragEnd)
+    }
+  }, [dragging, store])
+  if (dragging === undefined) return null
+  return (
+    <GitHubDropZone
+      dragging={dragging}
+      t={t}
+      onDrop={() => store.dropHandoff()}
+      onCancel={() => store.endDrag()}
     />
   )
 }

@@ -33,6 +33,9 @@ const REMOTE_POLL_MS = 250
 /** The Cordis service key the Gateway publishes this plugin's namespace under. */
 const REMOTE_KEY = `remote.${REMOTE_NAMESPACE}`
 
+/** The right-sidebar page kind this plugin owns. */
+const SIDEBAR_KIND = 'github-issues'
+
 /** How long a confirmation stays on screen. */
 const TOAST_MS = 2_500
 
@@ -445,6 +448,33 @@ export class GitHubStore implements PanelActions {
   unpin(): void {
     this.update({ pinnedCard: undefined, pendingHandoff: undefined })
     void this.savePrefs({ pinned: null })
+  }
+
+  /** Start a drag from the right-sidebar list; the composer shows the target. */
+  dragIssue(card: IssueCardVM): void {
+    this.update({ dragging: card })
+  }
+
+  /** End a drag without a handoff. */
+  endDrag(): void {
+    if (this.snapshot.dragging !== undefined) this.update({ dragging: undefined })
+  }
+
+  /** Drop the dragged issue on the composer: same path as the one-click handoff. */
+  dropHandoff(): void {
+    const card = this.snapshot.dragging
+    this.update({ dragging: undefined })
+    if (card !== undefined) this.handoff(card)
+  }
+
+  /** Open the co-visible right-sidebar tab for the on-screen Session. */
+  openInSidebar(): void {
+    this.service<{ selectPanel(id: string | null): void }>('layout')?.selectPanel(null)
+    // The column names its on-screen Session from the panel selection, so let
+    // that selection land before asking the page to open.
+    setTimeout(() => {
+      this.service<{ openTab(kind: string): void }>('sidebarRight')?.openTab(SIDEBAR_KIND)
+    }, 80)
   }
 
   handoff(card: IssueCardVM): void {

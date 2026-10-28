@@ -10,8 +10,8 @@
  * @module dsh-plugin-github-issues/client
  */
 
-import { DockHost, GitHubRailIcon, PageHost, SettingsHost } from './containers.tsx'
-import type { ClientContext, ClientRuntime } from './context.ts'
+import { DockHost, DropZoneHost, GitHubRailIcon, PageHost, SettingsHost, SidebarHost } from './containers.tsx'
+import type { ClientContext, ClientRuntime, SidebarRightTabsService } from './context.ts'
 import { DICTS, NS } from './locale.ts'
 import { remoteContribution } from './remote.ts'
 import { GitHubStore } from './store.ts'
@@ -21,6 +21,9 @@ const PANEL_ID = 'github'
 
 /** The settings section id this plugin owns. */
 const SETTINGS_ID = 'github-issues'
+
+/** The right-sidebar page type id this plugin owns. */
+const SIDEBAR_KIND = 'github-issues'
 
 /** Services this plugin consumes from the page. */
 export const inject = ['slots', 'locale', 'remote']
@@ -86,4 +89,33 @@ export function apply(ctx: ClientContext): void {
     label: () => t('settings.title'),
     inject: () => ({ store, t }),
   }, SettingsHost))
+
+  // A drag from the right sidebar is dropped on this bar, which only renders
+  // while a drag is in flight (so it never takes space from the composer).
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: 'github-issues-drop',
+    order: 25,
+    locale: NS,
+    inject: () => ({ store, t }),
+  }, DropZoneHost))
+
+  // The right sidebar may be absent from a profile; registering its page type
+  // inside a dynamic inject scope keeps the panel independent from it.
+  ctx.inject(['sidebarRightTabs'], scoped => {
+    const tabs = (scoped as unknown as { sidebarRightTabs: SidebarRightTabsService }).sidebarRightTabs
+    scoped.effect(() => tabs.register({
+      id: SIDEBAR_KIND,
+      kind: SIDEBAR_KIND,
+      priority: 'extension',
+      title: () => t('sidebar.tab'),
+      guide: [{ id: SIDEBAR_KIND, title: () => t('sidebar.tab'), order: 45 }],
+    }), 'github-issues: right-sidebar type')
+    scoped.slots.inject('sidebar.right.pane.tab', () => scoped.slots.register({
+      name: 'sidebar.right.pane.tab',
+      key: SIDEBAR_KIND,
+      locale: NS,
+      inject: () => ({ store, t }),
+    }, SidebarHost))
+  })
 }
