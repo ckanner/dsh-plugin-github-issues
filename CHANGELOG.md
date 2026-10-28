@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1 (unreleased)
+
+- Fix: clearing the composer no longer records a handoff. Only an observed send
+  (the composer entering `submitting`/`adjudicating` with the issue marker in the
+  draft) links the issue to the Session; emptying or replacing the draft now just
+  withdraws the pending chip and writes no link.
+- Fix: a pending handoff can be stamped with its target Session (the drag drop
+  path does), so only that Session's composer can consume it.
+- The one-click handoff still lands in the on-screen Session; the earlier attempt
+  to open a new Session was reverted because a blank Session does not render the
+  composer dock, leaving the pending chip invisible.
+
 ## 0.3.0 (unreleased)
 
 - Co-visible right-column `Issues` tab: the same cascade-filtered list beside the

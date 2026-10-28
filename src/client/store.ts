@@ -460,11 +460,22 @@ export class GitHubStore implements PanelActions {
     if (this.snapshot.dragging !== undefined) this.update({ dragging: undefined })
   }
 
-  /** Drop the dragged issue on the composer: same path as the one-click handoff. */
-  dropHandoff(): void {
+  /**
+   * Drop the dragged issue on the composer of the Session it was dragged into:
+   * the dock that mounts with this Session consumes the pending handoff and
+   * writes the prompt. No new Session is created for a drag.
+   */
+  dropHandoff(sessionId?: string): void {
     const card = this.snapshot.dragging
-    this.update({ dragging: undefined })
-    if (card !== undefined) this.handoff(card)
+    this.update({
+      dragging: undefined,
+      ...card === undefined
+        ? {}
+        : {
+            pendingHandoff: card,
+            ...sessionId === undefined ? {} : { pendingHandoffSession: sessionId },
+          },
+    })
   }
 
   /** Open the co-visible right-sidebar tab for the on-screen Session. */
@@ -479,7 +490,7 @@ export class GitHubStore implements PanelActions {
 
   handoff(card: IssueCardVM): void {
     this.pin(card)
-    this.update({ pendingHandoff: card })
+    this.update({ pendingHandoff: card, pendingHandoffSession: undefined })
     // Selecting the Conversation mounts its composer; the dock consumes the
     // pending handoff when it renders and writes the prompt into the draft.
     this.service<{ selectPanel(id: string | null): void }>('layout')?.selectPanel(null)
@@ -643,10 +654,18 @@ export class GitHubStore implements PanelActions {
     })()
   }
 
-  /** Take the pending handoff, if any. Exactly one caller receives it. */
-  consumeHandoff(): IssueCardVM | undefined {
+  /**
+   * Take the pending handoff when it belongs to this Session.
+   * @param sessionId - the Session whose dock asks; a handoff stamped for a
+   * different Session is left for that one.
+   * @returns the issue to stage, or `undefined`.
+   */
+  consumeHandoff(sessionId?: string): IssueCardVM | undefined {
     const card = this.snapshot.pendingHandoff
-    if (card !== undefined) this.update({ pendingHandoff: undefined })
+    if (card === undefined) return undefined
+    const target = this.snapshot.pendingHandoffSession
+    if (target !== undefined && sessionId !== undefined && target !== sessionId) return undefined
+    this.update({ pendingHandoff: undefined, pendingHandoffSession: undefined })
     return card
   }
 

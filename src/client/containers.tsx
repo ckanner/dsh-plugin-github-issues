@@ -132,19 +132,25 @@ export function DockHost({ store, t, runtime, inputActions, sessionId, useInput 
   const input = useInput === undefined ? undefined : useInput(state => state)
   const [draft, setDraft] = useState<IssueCardVM | undefined>(undefined)
   const lastDraft = useRef('')
+  /** The marker was in the draft at least once (the prompt was actually written). */
+  const markerSeen = useRef(false)
+  /** The composer left `plain` while the marker was present: a send, not a manual clear. */
+  const submitSeen = useRef(false)
   const marker = draft === undefined ? '' : `${draft.repo}#${String(draft.number)}`
 
   // One-click handoff switches to the Conversation; when its dock mounts, the
   // pending issue is written into the composer exactly once.
   useEffect(() => {
-    const pending = store.consumeHandoff()
+    const pending = store.consumeHandoff(sessionId)
     if (pending === undefined) return
+    markerSeen.current = false
+    submitSeen.current = false
     setDraft(pending)
     if (inputActions !== undefined) {
       inputActions.setDraft(store.promptFor(pending))
       if (store.getSnapshot().prefs.handoffMode === 'send') inputActions.submit()
     }
-  }, [snapshot.pendingHandoff, inputActions, store])
+  }, [snapshot.pendingHandoff, snapshot.pendingHandoffSession, inputActions, sessionId, store])
 
   // `conversation.input.dock` is a session slot: the renderer only mounts it for
   // a real session, so the links of that session are the chips to resolve.
@@ -153,23 +159,34 @@ export function DockHost({ store, t, runtime, inputActions, sessionId, useInput 
     if (sessionLinks.length !== 0) void store.ensureCards(sessionLinks)
   }, [snapshot.links, store])
 
-  // A staged prompt becomes a recorded handoff when it is actually submitted: the
-  // composer clears after a send (or the user empties it), and the phase passes
-  // through a non-idle value while the prompt round-trips.
+  // A staged prompt becomes a recorded handoff only when the composer actually
+  // submits while the marker is present. The phase leaving `plain` is the send
+  // signal; emptying the draft by hand is a withdrawal, so the chip goes away and
+  // nothing is linked.
   useEffect(() => {
     if (draft === undefined || input === undefined || sessionId === undefined) return
     const text = input.draft
-    const contained = lastDraft.current.includes(marker)
-    lastDraft.current = text
-    const submitting = input.phase === 'submitting' || input.phase === 'adjudicating'
-    const leftTheComposer = contained && text === ''
-    if ((submitting && text.includes(marker)) || leftTheComposer) {
+    if (text.includes(marker)) {
+      markerSeen.current = true
+      if (input.phase !== 'plain') submitSeen.current = true
+    }
+    if (markerSeen.current && submitSeen.current) {
       void store.linkIssue(draft, sessionId)
       setDraft(undefined)
+      markerSeen.current = false
+      submitSeen.current = false
+      lastDraft.current = ''
       return
     }
-    // The user replaced the prompt with something else: no handoff happened.
-    if (text !== '' && !text.includes(marker)) setDraft(undefined)
+    if (markerSeen.current && !text.includes(marker)) {
+      // Withdrawn or replaced before sending: drop the staged chip, link nothing.
+      setDraft(undefined)
+      markerSeen.current = false
+      submitSeen.current = false
+      lastDraft.current = ''
+      return
+    }
+    lastDraft.current = text
   }, [input, draft, marker, sessionId, store])
 
   /** Fill the draft and remember it as the session's pending handoff. */
@@ -255,7 +272,7 @@ export function SidebarHost({ store, t }: Omit<ContainerProps, 'runtime'> & { ru
  * transcript, or the bar itself); a drop inside the right sidebar is treated as a
  * cancel so dragging back where it started never hands the issue over.
  */
-export function DropZoneHost({ store, t }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime }) {
+export function DropZoneHost({ store, t, sessionId }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime, sessionId?: string }) {
   const snapshot = usePanel(store)
   const dragging = snapshot.dragging === undefined ? undefined : snapshot.dragging
   useEffect(() => {
@@ -289,7 +306,7 @@ export function DropZoneHost({ store, t }: Omit<ContainerProps, 'runtime'> & { r
     <GitHubDropZone
       dragging={dragging}
       t={t}
-      onDrop={() => store.dropHandoff()}
+      onDrop={() => store.dropHandoff(sessionId)}
       onCancel={() => store.endDrag()}
     />
   )

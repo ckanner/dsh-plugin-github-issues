@@ -45,6 +45,8 @@ export interface PanelSnapshot {
   pinnedCard?: IssueCardVM | undefined
   /** An issue a one-click handoff asked the composer dock to insert. */
   pendingHandoff?: IssueCardVM | undefined
+  /** The Session the pending handoff belongs to; only that dock may consume it. */
+  pendingHandoffSession?: string | undefined
   /** Transient confirmation locale key (renderers translate it). */
   toast?: string | undefined
   /** True when Projects v2 is unavailable because of the missing scope. */
@@ -132,8 +134,8 @@ export interface PanelActions {
   dragIssue(card: IssueCardVM): void
   /** End the drag without handing the issue over. */
   endDrag(): void
-  /** Hand the currently dragged issue to the agent (fills the composer draft). */
-  dropHandoff(): void
+  /** Hand the currently dragged issue to this Session (fills its composer draft). */
+  dropHandoff(sessionId?: string): void
 }
 
 /** Props of the full-page panel. */
