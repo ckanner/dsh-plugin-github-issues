@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.7 (unreleased)
+
+- Redesigned the detail pane's action and session areas. Primary actions are now
+  two real buttons with icons and equal height ("open session" primary, "new
+  session" outlined); "open on GitHub" and "copy prompt" moved to subtle inline
+  actions on the right. The linked-session list explains itself and gives each
+  entry a status dot, title/workspace, an "open" button and an "unlink" button
+  with a tooltip that unlinking never deletes the Session. The pane close control
+  is now named "close detail" so it cannot be confused with unlinking.
+
 ## 0.4.6 (unreleased)
 
 - The linked issue chip under the composer shows the issue state as a colored dot

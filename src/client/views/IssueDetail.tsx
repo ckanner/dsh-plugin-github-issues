@@ -16,7 +16,7 @@ import type { PageProps } from '../viewmodel.ts'
 import {
   Badge, Button, Chip, EmptyState, ErrorBanner, IconButton, ProgressBar, TONE,
 } from './controls.tsx'
-import { CloseGlyph, CopyGlyph, ExternalGlyph, GitHubIcon, PinGlyph } from './Icon.tsx'
+import { CloseGlyph, CopyGlyph, ExternalGlyph, GitHubIcon, LinkGlyph, PinGlyph, PlusGlyph } from './Icon.tsx'
 import {
   checksGlyph, formatDue, labelsWithoutPriority, prGlyph, prioritySourceLabel, priorityTone,
   relativeTime, reviewGlyph, stateLabelKey, stateTone,
@@ -32,7 +32,19 @@ export const ISSUE_DETAIL_CSS = `
 .ghx-title{margin:0;font-size:16px;line-height:24px;font-weight:500;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary)}
 .ghx-title a{color:inherit;text-decoration:none}
 .ghx-title a:hover{text-decoration:underline}
-.ghx-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.ghx-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ghx-actions-spacer{flex:1;min-width:0}
+.ghx-inline-action{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;cursor:pointer;padding:2px 4px;border-radius:6px;text-decoration:none;white-space:nowrap}
+.ghx-inline-action:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.ghx-session-hint{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
+.ghx-session-list{display:flex;flex-direction:column;gap:6px}
+.ghx-session{display:flex;align-items:center;gap:8px;min-width:0;padding:6px 8px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1)}
+.ghx-session-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--dsw-alias-state-success-primary)}
+.ghx-session[data-available='no'] .ghx-session-dot{background:var(--dsw-alias-label-tertiary)}
+.ghx-session-text{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.ghx-session-title{font-size:12px;line-height:16px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ghx-session-ws{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ghx-session-missing{font-size:11px;color:var(--dsw-alias-label-tertiary);flex:none}
 .ghx-body{margin:0;max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;box-sizing:border-box;padding:10px 12px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-1);font-family:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;color:var(--dsw-alias-label-primary)}
 .ghx-section{display:flex;flex-direction:column;gap:6px}
 .ghx-section-title{margin:0;font-size:12px;line-height:18px;font-weight:500;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.02em}
@@ -165,7 +177,7 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
           <Badge tone="info" title={t('panel.project')}>{card.projectStatus.name}</Badge>
         )}
         <span className="ghx-head-spacer" />
-        <IconButton label={t('panel.close')} onClick={() => actions.closeDetail()}>
+        <IconButton label={t('panel.closeDetail')} onClick={() => actions.closeDetail()}>
           <CloseGlyph size={14} />
         </IconButton>
       </div>
@@ -175,17 +187,10 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
       </h2>
 
       <div className="ghx-actions">
-        <a className="gh-btn gh-btn-outline gh-btn-sm" href={card.url} target="_blank" rel="noreferrer">
-          <ExternalGlyph size={12} />
-          {t('panel.openOnGitHub')}
-        </a>
-        <Button size="sm" variant="ghost" onClick={() => actions.copyPrompt(card)}>
-          <CopyGlyph size={12} />
-          {t('panel.copyPrompt')}
-        </Button>
         {sessionLinks.length === 0
           ? (
             <Button size="sm" variant="primary" onClick={() => actions.handoff(card)}>
+              <PlusGlyph size={12} />
               {t('panel.handToAgent')}
             </Button>
           )
@@ -196,13 +201,24 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
                 variant="primary"
                 onClick={() => actions.openSession(sessionLinks[sessionLinks.length - 1]?.sessionId ?? '')}
               >
+                <LinkGlyph size={12} />
                 {t('panel.openSession')}
               </Button>
               <Button size="sm" variant="outline" onClick={() => actions.handoff(card)}>
+                <PlusGlyph size={12} />
                 {t('panel.newSession')}
               </Button>
             </>
           )}
+        <span className="ghx-actions-spacer" />
+        <a className="ghx-inline-action" href={card.url} target="_blank" rel="noreferrer">
+          <ExternalGlyph size={12} />
+          {t('panel.openOnGitHub')}
+        </a>
+        <button type="button" className="ghx-inline-action" onClick={() => actions.copyPrompt(card)}>
+          <CopyGlyph size={12} />
+          {t('panel.copyPrompt')}
+        </button>
       </div>
 
       <section className="ghx-section">
@@ -210,28 +226,44 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
         {sessionLinks.length === 0
           ? <div className="ghx-muted">{t('panel.noSession')}</div>
           : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {sessionLinks.map(link => {
-                const view = resolveSession(link.sessionId)
-                return (
-                  <div key={link.sessionId} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                    <span className="ghx-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {view.workspaceTitle === undefined ? view.title : `${view.workspaceTitle} / ${view.title}`}
-                    </span>
-                    {view.available
-                      ? (
-                        <Button size="sm" variant="outline" onClick={() => actions.openSession(link.sessionId)}>
-                          {view.title === link.sessionId ? t('panel.openSession') : t('panel.openSessionNamed', { title: view.title })}
-                        </Button>
-                      )
-                      : <span className="ghx-muted">{t('panel.sessionMissing')}</span>}
-                    <Button size="sm" variant="ghost" onClick={() => actions.unlinkSession(card, link.sessionId)}>
-                      {t('panel.close')}
-                    </Button>
-                  </div>
-                )
-              })}
-            </div>
+            <>
+              <div className="ghx-session-hint">{t('panel.sessionsHint')}</div>
+              <div className="ghx-session-list">
+                {sessionLinks.map(link => {
+                  const view = resolveSession(link.sessionId)
+                  return (
+                    <div
+                      key={link.sessionId}
+                      className="ghx-session"
+                      data-available={view.available ? 'yes' : 'no'}
+                    >
+                      <span className="ghx-session-dot" aria-hidden="true" />
+                      <span className="ghx-session-text">
+                        <span className="ghx-session-title" title={view.title}>{view.title}</span>
+                        {view.workspaceTitle !== undefined && (
+                          <span className="ghx-session-ws">{view.workspaceTitle}</span>
+                        )}
+                      </span>
+                      {view.available
+                        ? (
+                          <Button size="sm" variant="outline" onClick={() => actions.openSession(link.sessionId)}>
+                            {t('panel.enterSession')}
+                          </Button>
+                        )
+                        : <span className="ghx-session-missing">{t('panel.sessionUnavailable')}</span>}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        title={t('panel.unlinkSessionHint')}
+                        onClick={() => actions.unlinkSession(card, link.sessionId)}
+                      >
+                        {t('panel.unlinkSession')}
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
           )}
       </section>
 

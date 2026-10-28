@@ -140,6 +140,15 @@ export function ExternalGlyph(props: GlyphProps) {
 }
 
 /** A pushpin for the panel's pin action. */
+export function PlusGlyph(props: GlyphProps) {
+  const { size = 14 } = props
+  return (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" aria-hidden="true">
+      <path d="M8 3.5v9M3.5 8h9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function PinGlyph(props: GlyphProps) {
   return (
     <Glyph {...props}>
