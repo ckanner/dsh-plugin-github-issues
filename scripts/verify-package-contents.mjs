@@ -24,8 +24,16 @@ function packedFiles() {
   const output = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
     cwd: root,
     encoding: 'utf8',
+    // Older npm bundles still run `prepare` for a dry-run pack even with the CLI
+    // flag, and its stdout would corrupt the JSON; the env variable is honoured
+    // by every version.
+    env: { ...process.env, npm_config_ignore_scripts: 'true' },
   })
-  const [info] = JSON.parse(output)
+  // Belt and braces: if a lifecycle script still printed something, parse from
+  // the first JSON array character.
+  const start = output.indexOf('[')
+  assert.notEqual(start, -1, 'npm pack --json printed no JSON array')
+  const [info] = JSON.parse(output.slice(start))
   assert.ok(info !== undefined, 'npm pack --json returned no entry')
   return info.files.map(entry => entry.path)
 }
