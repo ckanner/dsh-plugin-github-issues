@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 (unreleased)
+
+- The pending handoff is now a proper attachment-style issue card above the
+  composer: issue logo, state, `org/repo#number`, title, a pending badge, an open
+  in panel action and remove. The prompt template is written into the input, so
+  the user can append instructions before sending.
+- The linked chip under the composer now carries the issue logo, its state label
+  (open/closed), the organization/repository and the issue number; clicking it
+  still opens the detail popover.
+- If the issue is already linked, the panel's button is "enter Session" and no
+  card is staged; the linked chip appears in that Session's composer dock.
+
 ## 0.4.0 (unreleased)
 
 - One-click handoff now opens a fresh Session instead of using the on-screen one.

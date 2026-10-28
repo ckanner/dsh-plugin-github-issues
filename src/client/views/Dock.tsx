@@ -22,10 +22,11 @@ import { prGlyph, stateLabelKey, stateTone } from './format.ts'
 /** The stylesheet chunk owned by this module. */
 export const DOCK_CSS = `
 .ghd-row{display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0;max-width:100%;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
-.ghd-chip{display:inline-flex;align-items:center;gap:4px;box-sizing:border-box;height:22px;max-width:260px;min-width:0;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-family:inherit;font-size:11px;line-height:18px}
+.ghd-chip{display:inline-flex;align-items:center;gap:5px;box-sizing:border-box;height:22px;max-width:300px;min-width:0;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-family:inherit;font-size:11px;line-height:18px}
 .ghd-chip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3)}
 .ghd-chip:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}
 .ghd-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.ghd-state{flex:none;font-size:10px;line-height:14px}
 .ghd-prefix{font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ghd-num{font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);flex:none}
 .ghd-extra{flex:none;font-size:10px;line-height:14px;padding:0 4px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary)}
@@ -199,7 +200,7 @@ export function GitHubDock({ chips, t, onRemoveChip, onOpenChip }: DockProps) {
             >
               <GitHubIcon size={11} />
               {chip.state !== 'degraded' && (
-                <span className="ghd-dot" style={{ background: TONE[state].dot }} aria-hidden="true" />
+                <span className="ghd-state" style={{ color: TONE[state].fg }}>{t(stateLabelKey(chip.card.state))}</span>
               )}
               <span className="ghd-prefix" title={chip.card.repo}>{chip.card.repo}</span>
               <span className="ghd-num">{`#${String(chip.card.number)}`}</span>

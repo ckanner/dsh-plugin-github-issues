@@ -21,7 +21,7 @@ import type { ComposerIssueChip, SessionLinkView } from './viewmodel.ts'
 import { GitHubDock } from './views/Dock.tsx'
 import { GitHubDropZone } from './views/DropZone.tsx'
 import { GitHubIcon } from './views/Icon.tsx'
-import { GitHubPendingBar } from './views/Pending.tsx'
+import { GitHubPendingCard } from './views/Pending.tsx'
 import { GitHubPage } from './views/Page.tsx'
 import { GitHubSettings } from './views/Settings.tsx'
 import { GitHubSidebar } from './views/Sidebar.tsx'
@@ -247,7 +247,7 @@ export function InputHost({ store, t, sessionId, useInput, inputActions }: Omit<
   return (
     <>
       {pending !== undefined && (
-        <GitHubPendingBar
+        <GitHubPendingCard
           card={pending}
           t={t}
           onOpenPanel={() => store.openInPanel(pending)}
