@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2 (unreleased)
+
+- The pending issue now renders as a small chip inside the composer card itself
+  (the `conversation.input.overlay` floating layer), matching the attachment-row
+  style: `[issue icon] org/repo#number state pending x`. The prompt starts on the
+  line below so nothing overlaps. The official attachment rail is untouched, so
+  images/files keep their thumbnails, upload progress and drag-drop.
+- Linked chips stay in the dock under the composer and still show logo, state,
+  organization/repository and number with a detail popover.
+
 ## 0.4.1 (unreleased)
 
 - The pending handoff is now a proper attachment-style issue card above the

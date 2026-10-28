@@ -10,7 +10,7 @@
  * @module dsh-plugin-github-issues/client
  */
 
-import { DockHost, GitHubRailIcon, InputHost, PageHost, SettingsHost, SidebarHost } from './containers.tsx'
+import { DockHost, DropZoneHost, GitHubRailIcon, PageHost, PendingOverlayHost, SettingsHost, SidebarHost } from './containers.tsx'
 import type { ClientContext, ClientRuntime, SidebarRightTabsService } from './context.ts'
 import { DICTS, NS } from './locale.ts'
 import { remoteContribution } from './remote.ts'
@@ -90,15 +90,25 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({ store, t }),
   }, SettingsHost))
 
-  // Above the composer: the pending handoff chip (attachment-like) and the drop
-  // target for drags out of the right column. Both render nothing when idle.
+  // Inside the composer card: the pending handoff chip, rendered like an
+  // attachment row (the slot is the composer's floating layer inside the card).
+  ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register({
+    name: 'conversation.input.overlay',
+    id: 'github-issues-pending',
+    order: 20,
+    locale: NS,
+    inject: () => ({ store, t }),
+  }, PendingOverlayHost))
+
+  // Above the composer: the drop target for drags out of the right column. It
+  // renders nothing while idle, so it never takes space from the composer.
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
-    id: 'github-issues-input',
+    id: 'github-issues-drop',
     order: 25,
     locale: NS,
     inject: () => ({ store, t }),
-  }, InputHost))
+  }, DropZoneHost))
 
   // The right sidebar may be absent from a profile; registering its page type
   // inside a dynamic inject scope keeps the panel independent from it.

@@ -21,7 +21,7 @@ import type { ComposerIssueChip, SessionLinkView } from './viewmodel.ts'
 import { GitHubDock } from './views/Dock.tsx'
 import { GitHubDropZone } from './views/DropZone.tsx'
 import { GitHubIcon } from './views/Icon.tsx'
-import { GitHubPendingCard } from './views/Pending.tsx'
+import { GitHubPendingChip } from './views/Pending.tsx'
 import { GitHubPage } from './views/Page.tsx'
 import { GitHubSettings } from './views/Settings.tsx'
 import { GitHubSidebar } from './views/Sidebar.tsx'
@@ -164,16 +164,14 @@ export function DockHost({ store, t, runtime, sessionId }: ContainerProps & Sess
 }
 
 /**
- * The input dock above the composer: the pending handoff chip and the drop target.
+ * The pending handoff chip inside the composer card (`conversation.input.overlay`).
  *
- * The pending chip lives *above* the input like an attachment preview (the user's
- * original request), which also makes it visible in a blank handoff Session where
- * the composer dock row below the input is not rendered. This component owns the
- * staging: it consumes a pending handoff stamped for this Session, writes the
- * prompt, records the link only on an observed send, and withdraws the chip when
- * the draft is emptied or replaced.
+ * This component owns the staging: it consumes a pending handoff stamped for this
+ * Session, writes the prompt into the composer with a leading blank line (so the
+ * chip sits on the first line like an attachment row), records the link only on
+ * an observed send, and withdraws the chip when the draft is emptied or replaced.
  */
-export function InputHost({ store, t, sessionId, useInput, inputActions }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime } & SessionKit) {
+export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime } & SessionKit) {
   const snapshot = usePanel(store)
   const [pending, setPending] = useState<IssueCardVM | undefined>(undefined)
   /** The marker was in the draft at least once (the prompt was actually written). */
@@ -183,14 +181,14 @@ export function InputHost({ store, t, sessionId, useInput, inputActions }: Omit<
   const marker = pending === undefined ? '' : `${pending.repo}#${String(pending.number)}`
   const input = useInput === undefined ? undefined : useInput(state => state)
 
-  // The handoff that was stamped for this Session: write its prompt once.
+  // The handoff stamped for this Session: stage it inside the composer once.
   useEffect(() => {
     const card = store.consumeHandoff(sessionId)
     if (card === undefined) return
     markerSeen.current = false
     submitSeen.current = false
     setPending(card)
-    if (inputActions !== undefined) inputActions.setDraft(store.promptFor(card))
+    if (inputActions !== undefined) inputActions.setDraft(`\n${store.promptFor(card)}`)
   }, [snapshot.pendingHandoff, snapshot.pendingHandoffSession, inputActions, sessionId, store])
 
   // Link only on an observed send; clearing the draft withdraws the pending chip.
@@ -215,7 +213,31 @@ export function InputHost({ store, t, sessionId, useInput, inputActions }: Omit<
     }
   }, [input, pending, marker, sessionId, store])
 
-  // The drop target: a drag from the right column stages into THIS Session.
+  if (pending === undefined) return null
+  return (
+    <GitHubPendingChip
+      card={pending}
+      t={t}
+      onOpenPanel={() => store.openInPanel(pending)}
+      onRemove={() => {
+        setPending(undefined)
+        markerSeen.current = false
+        submitSeen.current = false
+        inputActions?.setDraft('')
+      }}
+    />
+  )
+}
+
+/**
+ * The drop target above the composer (`conversation.input.dock`).
+ *
+ * It only renders while a drag is in flight; the whole window accepts the drop
+ * (dropping back into the right column cancels). The staged handoff then shows in
+ * the composer card through {@link PendingOverlayHost}.
+ */
+export function DropZoneHost({ store, t, sessionId }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime, sessionId?: string }) {
+  const snapshot = usePanel(store)
   const dragging = snapshot.dragging
   useEffect(() => {
     if (dragging === undefined) return
@@ -243,31 +265,14 @@ export function InputHost({ store, t, sessionId, useInput, inputActions }: Omit<
       window.removeEventListener('dragend', onDragEnd)
     }
   }, [dragging, sessionId, store])
-
+  if (dragging === undefined) return null
   return (
-    <>
-      {pending !== undefined && (
-        <GitHubPendingCard
-          card={pending}
-          t={t}
-          onOpenPanel={() => store.openInPanel(pending)}
-          onRemove={() => {
-            setPending(undefined)
-            markerSeen.current = false
-            submitSeen.current = false
-            inputActions?.setDraft('')
-          }}
-        />
-      )}
-      {dragging !== undefined && (
-        <GitHubDropZone
-          dragging={dragging}
-          t={t}
-          onDrop={() => store.dropHandoff(sessionId)}
-          onCancel={() => store.endDrag()}
-        />
-      )}
-    </>
+    <GitHubDropZone
+      dragging={dragging}
+      t={t}
+      onDrop={() => store.dropHandoff(sessionId)}
+      onCancel={() => store.endDrag()}
+    />
   )
 }
 
