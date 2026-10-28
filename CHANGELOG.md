@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4 (unreleased)
+
+- The in-composer issue card no longer shows the redundant "pending" badge: the
+  card itself is the pending state. It now shows only the issue icon,
+  `org/repo#number`, the issue state (open/closed) and the remove control.
+
 ## 0.4.3 (unreleased)
 
 - The pending issue card now *is* the prompt: the composer stays empty (only an
