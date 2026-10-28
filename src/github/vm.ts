@@ -467,10 +467,17 @@ export function toIssueCardVM(node: RawIssue, options: IssueCardOptions = {}): I
   }
 }
 
-/** Map a `timelineItems` connection to mentioned PRs, dropping duplicates and closers. */
-function mentionedPRsOf(
+/**
+ * Map a `timelineItems` connection to mentioned PRs.
+ * Closing references are not filtered here (the caller owns the card); duplicates
+ * are dropped. The panel filters out PRs already listed as closing references.
+ * @param crossRefs - `timelineItems.nodes` from the cross-reference request.
+ * @param closingNumbers - PR numbers already rendered as closing references.
+ * @returns mentioned pull requests in timeline order.
+ */
+export function toMentionedPRsVM(
   crossRefs: readonly (RawTimelineItem | null)[] | null | undefined,
-  closingNumbers: ReadonlySet<number>,
+  closingNumbers: ReadonlySet<number> = new Set(),
 ): LinkedPRVM[] {
   const mentioned: LinkedPRVM[] = []
   const seen = new Set<number>()
@@ -504,7 +511,7 @@ export function toIssueDetailVM(
   return {
     ...card,
     body: typeof node.body === 'string' ? node.body : '',
-    mentionedPRs: mentionedPRsOf(crossRefs, closingNumbers),
+    mentionedPRs: toMentionedPRsVM(crossRefs, closingNumbers),
   }
 }
 

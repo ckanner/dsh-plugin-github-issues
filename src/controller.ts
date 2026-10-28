@@ -18,7 +18,8 @@ import type { GitHubApi, GitHubApiOptions, GhProbe, ResolvedAuth } from './githu
 import { GitHubApiError } from './github/types.ts'
 import type { PrefsStore } from './github/state.ts'
 import type {
-  GitHubStatus, IssueCardVM, IssueDetailVM, IssueLinkRecord, IssueListPage, Prefs,
+  GitHubStatus, IssueBodyVM, IssueCardVM, IssueDetailVM, IssueLinkRecord, IssueListPage,
+  LinkedPRVM, Prefs,
   ProjectRefVM, RepoPageVM, ScopeCatalog,
 } from './vm.ts'
 
@@ -213,8 +214,14 @@ export class GitHubIssuesController extends TypertRemoteService {
 
   /** One issue with body and linked PRs. */
   @Remote
-  async issueDetail(repo: string, number: number): Promise<IssueDetailVM> {
-    return this.decorate(await this.withApi(api => api.issueDetail(repo, number)))
+  async issueDetail(repo: string, number: number): Promise<IssueBodyVM> {
+    return this.withApi(api => api.issueDetail(repo, number))
+  }
+
+  /** The issue's cross-referenced pull requests; fetched after the detail shows. */
+  @Remote
+  async issueMentionedPRs(repo: string, number: number): Promise<{ mentionedPRs: LinkedPRVM[] }> {
+    return this.withApi(api => api.issueMentionedPRs(repo, number))
   }
 
   /** Every recorded issue → session link (the dock resolves its own session). */

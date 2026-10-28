@@ -325,9 +325,12 @@ ${FRAGMENTS}`,
 }
 
 /**
- * One issue with its body, closing PRs, org field values, and cross-references.
- * `timelineItems` is narrowed to `CROSS_REFERENCED_EVENT` and ten entries;
- * the detail mapper turns PR sources into mentioned-PR rows.
+ * One issue with its body and card fields.
+ *
+ * The cross-reference timeline is *not* part of this request: it is the slowest
+ * leg of the detail (a timeline scan plus a full PR fragment per entry), so the
+ * panel asks for it separately after the detail is already on screen. See
+ * {@link buildMentionedPRsQuery}.
  * @param input - repository and issue number.
  * @returns the operation and its variables.
  */
@@ -339,10 +342,31 @@ export function buildIssueDetailQuery(input: {
   return {
     query: `query IssueDetail($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
-    nameWithOwner
-    isPrivate
     issue(number: $number) {
-      ...IssueCardFields
+      id
+      number
+      body
+    }
+  }
+}`,
+    variables: { owner: input.owner, name: input.name, number: input.number },
+  }
+}
+
+/**
+ * The issue's cross-referenced pull requests (the slow timeline leg).
+ * @param input - repository and issue number.
+ * @returns the operation and its variables.
+ */
+export function buildMentionedPRsQuery(input: {
+  owner: string
+  name: string
+  number: number
+}): GitHubGraphQLRequest {
+  return {
+    query: `query IssueMentionedPRs($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
       timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], first: 10) {
         nodes {
           __typename
@@ -357,7 +381,7 @@ export function buildIssueDetailQuery(input: {
     }
   }
 }
-${FRAGMENTS}`,
+${LINKED_PR_FRAGMENT}`,
     variables: { owner: input.owner, name: input.name, number: input.number },
   }
 }

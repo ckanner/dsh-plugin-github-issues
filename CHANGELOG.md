@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.6 (unreleased)
+
+- The linked issue chip under the composer shows the issue state as a colored dot
+  (green open, red closed) instead of the "open/closed" words.
+- Issue detail is split into a fast body request plus a lazy cross-referenced-PR
+  request. The pane renders title/milestone/labels/assignees/linked PRs straight
+  from the list card while the body loads; the mentioned-PR section shows a
+  loading hint. Measured on mesh#2469: full detail cold ~5.0s -> body-only cold
+  ~2.4s / warm ~0.6s; the timeline leg (~3.6s cold) loads after the pane is
+  visible. Chips no longer trigger a detail request each (list lookup or
+  placeholder instead).
+- The detail pane now offers both actions when the issue is already linked:
+  "enter Session" (most recent link) and "new Session for this issue". The
+  handling-session list still lets you enter any linked Session; multiple links
+  per issue are allowed (up to 20).
+
 ## 0.4.5 (unreleased)
 
 - The in-composer issue card now shows only the GitHub icon, `org/repo#number`

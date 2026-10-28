@@ -9,8 +9,8 @@
  */
 
 import type {
-  IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, OrgRefVM, ProjectRefVM,
-  RepoPageVM, ScopeCatalog,
+  IssueBodyVM, IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, LinkedPRVM,
+  OrgRefVM, ProjectRefVM, RepoPageVM, ScopeCatalog,
 } from '../vm.ts'
 
 /** A token resolved from the machine's `gh` CLI. */
@@ -72,8 +72,10 @@ export interface GitHubApi {
   orgRepos(org: string, signal?: AbortSignal): Promise<RepoPageVM>
   /** One page of issues for a list view. */
   listIssues(request: IssueListRequest, signal?: AbortSignal): Promise<IssueListPage>
-  /** One issue with its body and linked pull requests. */
-  issueDetail(repo: string, number: number, signal?: AbortSignal): Promise<IssueDetailVM>
+  /** One issue with its body and linked pull requests (no timeline). */
+  issueDetail(repo: string, number: number, signal?: AbortSignal): Promise<IssueBodyVM>
+  /** The issue's cross-referenced pull requests; the lazy slow leg of the detail. */
+  issueMentionedPRs(repo: string, number: number, signal?: AbortSignal): Promise<{ mentionedPRs: LinkedPRVM[] }>
   /** Drop cached responses for the next call to refetch. */
   invalidate(scope?: 'list' | 'detail' | 'all'): void
 }

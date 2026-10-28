@@ -116,6 +116,11 @@ export interface IssueCardVM {
   sessionLinks?: IssueSessionLinkVM[]
 }
 
+/** The fast part of an issue detail: the body only. */
+export interface IssueBodyVM {
+  body: string
+}
+
 /** One issue's full detail. */
 export interface IssueDetailVM extends IssueCardVM {
   body: string

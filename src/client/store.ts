@@ -16,9 +16,9 @@
 import { renderPrompt } from '../prompt.ts'
 import { REMOTE_NAMESPACE } from '../remote-methods.ts'
 import {
-  DEFAULT_PREFS, type GitHubStatus, type IssueCardVM, type IssueDetailVM, type IssueLinkRecord,
-  type IssueListPage, type IssueListRequest, type Prefs, type PrefsPatch, type ProjectRefVM,
-  type RepoPageVM, type ScopeCatalog,
+  DEFAULT_PREFS, type GitHubStatus, type IssueBodyVM, type IssueCardVM, type IssueDetailVM,
+  type IssueLinkRecord, type IssueListPage, type IssueListRequest, type Prefs, type PrefsPatch,
+  type ProjectRefVM, type RepoPageVM, type ScopeCatalog,
 } from '../vm.ts'
 import type {
   ClientContext, ClientRuntime, SnapshotSource, UiSessionService, WorkspaceEntrySnapshot,
@@ -50,7 +50,8 @@ interface RemoteApi {
   orgProjects(org: string): Promise<RemoteResult<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }>>
   orgRepos(org: string): Promise<RemoteResult<RepoPageVM>>
   listIssues(request: IssueListRequest): Promise<RemoteResult<IssueListPage>>
-  issueDetail(repo: string, number: number): Promise<RemoteResult<IssueDetailVM>>
+  issueDetail(repo: string, number: number): Promise<RemoteResult<IssueBodyVM>>
+  issueMentionedPRs(repo: string, number: number): Promise<RemoteResult<{ mentionedPRs: IssueDetailVM['mentionedPRs'] }>>
   loadPrefs(): Promise<RemoteResult<Prefs>>
   savePrefs(patch: PrefsPatch): Promise<RemoteResult<Prefs>>
   refresh(): Promise<RemoteResult<{ ok: true }>>
@@ -316,17 +317,34 @@ export class GitHubStore implements PanelActions {
     if (found !== undefined && this.snapshot.pinnedCard?.id !== found.id) this.update({ pinnedCard: found })
   }
 
-  /** Fetch the pinned issue when it is not in the current list. */
+  /** A card for one issue from the loaded list, or a minimal placeholder. */
+  private cardFor(repo: string, number: number): IssueCardVM {
+    const found = this.snapshot.list?.items.find(item => item.repo === repo && item.number === number)
+    if (found !== undefined) return found
+    return {
+      id: `${repo}#${String(number)}`,
+      repo,
+      number,
+      title: '',
+      url: `https://github.com/${repo}/issues/${String(number)}`,
+      state: 'OPEN',
+      stateReason: null,
+      isPrivate: false,
+      labels: [],
+      assignees: [],
+      updatedAt: '',
+      commentCount: 0,
+      linkedPRs: [],
+      sessionLinks: [],
+    }
+  }
+
+  /** The pinned issue's card, when the loaded list carries it. */
   private async hydratePinned(): Promise<void> {
     const pinned = this.snapshot.prefs.pinned
     if (pinned === undefined || this.snapshot.pinnedCard !== undefined) return
-    try {
-      const remote = await this.api()
-      const detail = await remote.issueDetail(pinned.repo, pinned.number).then(result => unwrap(result))
-      this.update({ pinnedCard: detail })
-    } catch {
-      // A deleted or inaccessible pinned issue simply leaves the dock empty.
-    }
+    const found = this.snapshot.list?.items.find(item => item.repo === pinned.repo && item.number === pinned.number)
+    if (found !== undefined) this.update({ pinnedCard: found })
   }
 
   // ── PanelActions ────────────────────────────────────────────────────────────
@@ -406,20 +424,33 @@ export class GitHubStore implements PanelActions {
   }
 
   selectIssue(card: IssueCardVM): void {
-    this.update({ selected: card, detail: undefined, detailLoading: true })
+    this.update({ selected: card, detail: undefined, detailLoading: true, mentionedLoading: false })
     void (async () => {
       try {
         const remote = await this.api()
-        const detail = await remote.issueDetail(card.repo, card.number).then(result => unwrap(result))
-        this.update({ detail, detailLoading: false })
+        const body = await remote.issueDetail(card.repo, card.number).then(result => unwrap(result))
+        this.update({
+          detail: { ...card, body: body.body, mentionedPRs: [] },
+          detailLoading: false,
+          mentionedLoading: true,
+        })
+        // The timeline is the slow leg: let the pane show first, then merge it.
+        const mentioned = await remote.issueMentionedPRs(card.repo, card.number).then(result => unwrap(result))
+        const current = this.snapshot.detail
+        if (current === undefined || current.repo !== card.repo || current.number !== card.number) return
+        const closing = new Set(current.linkedPRs.map(pr => pr.number))
+        this.update({
+          detail: { ...current, mentionedPRs: mentioned.mentionedPRs.filter(pr => !closing.has(pr.number)) },
+          mentionedLoading: false,
+        })
       } catch (error) {
-        this.update({ detailLoading: false, error: asPanelError(error) })
+        this.update({ detailLoading: false, mentionedLoading: false, error: asPanelError(error) })
       }
     })()
   }
 
   closeDetail(): void {
-    this.update({ selected: undefined, detail: undefined, detailLoading: false })
+    this.update({ selected: undefined, detail: undefined, detailLoading: false, mentionedLoading: false })
   }
 
   async savePrefs(
@@ -606,22 +637,10 @@ export class GitHubStore implements PanelActions {
       missing.set(key, { repo: link.repo, number: link.number })
     }
     if (missing.size === 0) return
-    try {
-      const remote = await this.api()
-      const cards: Record<string, IssueCardVM> = {}
-      for (const [key, target] of [...missing.entries()].slice(0, 10)) {
-        try {
-          const detail = await remote.issueDetail(target.repo, target.number).then(result => unwrap(result))
-          cards[key] = detail
-        } catch {
-          // A deleted or inaccessible issue just has no chip.
-        }
-      }
-      if (Object.keys(cards).length === 0) return
-      this.update({ linkCards: { ...this.snapshot.linkCards, ...cards } })
-    } catch {
-      // ignore: chips appear once the list or a later load resolves the card
-    }
+    const cards: Record<string, IssueCardVM> = {}
+    for (const [key, target] of missing.entries()) cards[key] = this.cardFor(target.repo, target.number)
+    if (Object.keys(cards).length === 0) return
+    this.update({ linkCards: { ...this.snapshot.linkCards, ...cards } })
   }
 
   /** Attach resolved session links to every card the snapshot currently holds. */
@@ -704,8 +723,20 @@ export class GitHubStore implements PanelActions {
     void (async () => {
       try {
         const remote = await this.api()
-        const detail = await remote.issueDetail(card.repo, card.number).then(result => unwrap(result))
-        this.update({ detail, detailLoading: false })
+        const body = await remote.issueDetail(card.repo, card.number).then(result => unwrap(result))
+        this.update({
+          detail: { ...card, body: body.body, mentionedPRs: [] },
+          detailLoading: false,
+          mentionedLoading: true,
+        })
+        const mentioned = await remote.issueMentionedPRs(card.repo, card.number).then(result => unwrap(result))
+        const current = this.snapshot.detail
+        if (current === undefined || current.repo !== card.repo || current.number !== card.number) return
+        const closing = new Set(current.linkedPRs.map(pr => pr.number))
+        this.update({
+          detail: { ...current, mentionedPRs: mentioned.mentionedPRs.filter(pr => !closing.has(pr.number)) },
+          mentionedLoading: false,
+        })
       } catch (error) {
         this.update({ detailLoading: false, error: asPanelError(error) })
       }

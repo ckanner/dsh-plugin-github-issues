@@ -34,6 +34,7 @@ export const REMOTE_METHODS: readonly RemoteMethod[] = [
   { method: 'orgRepos', parameters: [{ wire: 'org' }] },
   { method: 'listIssues', parameters: [{ wire: 'request' }] },
   { method: 'issueDetail', parameters: [{ wire: 'repo' }, { wire: 'number' }] },
+  { method: 'issueMentionedPRs', parameters: [{ wire: 'repo' }, { wire: 'number' }] },
   { method: 'loadPrefs', parameters: [] },
   { method: 'savePrefs', parameters: [{ wire: 'patch' }] },
   { method: 'refresh', parameters: [] },

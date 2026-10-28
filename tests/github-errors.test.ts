@@ -214,19 +214,30 @@ test('list pages are cached until the list cache is invalidated', async (t) => {
   assert.equal(fake.count('SearchIssues'), 2)
 })
 
-test('detail pages are cached until the detail cache is invalidated', async (t) => {
+test('the detail body is cached until the detail cache is invalidated', async (t) => {
   const fake = useFake(t)
-  fake.on('IssueDetail', { body: { data: { repository: { issue: { ...ISSUE, timelineItems: { nodes: [] } } } } } })
+  fake.on('IssueDetail', { body: { data: { repository: { issue: { id: 'I_1', number: 2469, body: 'Body' } } } } })
   const api = makeApi()
   const detail = await api.issueDetail('one2x-ai/mesh', 2469)
   await api.issueDetail('one2x-ai/mesh', 2469)
   assert.equal(fake.count('IssueDetail'), 1)
-  assert.equal(detail.number, 2469)
-  assert.equal(detail.body, 'Body')
-  assert.deepEqual(detail.mentionedPRs, [])
+  assert.deepEqual(detail, { body: 'Body' })
   api.invalidate('detail')
   await api.issueDetail('one2x-ai/mesh', 2469)
   assert.equal(fake.count('IssueDetail'), 2)
+})
+
+test('the mentioned PRs are fetched as a separate, cached request', async (t) => {
+  const fake = useFake(t)
+  fake.on('IssueMentionedPRs', { body: { data: { repository: { issue: { timelineItems: { nodes: [] } } } } } })
+  const api = makeApi()
+  const first = await api.issueMentionedPRs('one2x-ai/mesh', 2469)
+  await api.issueMentionedPRs('one2x-ai/mesh', 2469)
+  assert.equal(fake.count('IssueMentionedPRs'), 1)
+  assert.deepEqual(first, { mentionedPRs: [] })
+  api.invalidate('detail')
+  await api.issueMentionedPRs('one2x-ai/mesh', 2469)
+  assert.equal(fake.count('IssueMentionedPRs'), 2)
 })
 
 test('scopes returns the organization/repository catalog and the org project lookup degrades', async (t) => {

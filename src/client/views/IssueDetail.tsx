@@ -138,10 +138,13 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
   const card = snapshot.detail ?? snapshot.selected
   if (card === undefined) return null
 
+  // The card already carries milestone/labels/assignees/PRs: render those from it
+  // while the body request is in flight instead of skeleton-ing the whole pane.
+  const provisional = snapshot.detail === undefined && snapshot.selected !== undefined && snapshot.detailLoading
   const detail = snapshot.detail
+    ?? (provisional ? { ...card, body: '', mentionedPRs: [] } : undefined)
   const error = snapshot.error
   const detailFailed = detail === undefined && !snapshot.detailLoading && error !== undefined
-  const showSkeleton = detail === undefined && snapshot.detailLoading
   const showHint = detail === undefined && !snapshot.detailLoading && error === undefined
   const tone = stateTone(card.state, card.stateReason)
   const body = detail?.body !== undefined && detail.body !== '' ? detail.body : detail?.bodyExcerpt
@@ -187,13 +190,18 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
             </Button>
           )
           : (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => actions.openSession(sessionLinks[sessionLinks.length - 1]?.sessionId ?? '')}
-            >
-              {t('panel.openSession')}
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => actions.openSession(sessionLinks[sessionLinks.length - 1]?.sessionId ?? '')}
+              >
+                {t('panel.openSession')}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => actions.handoff(card)}>
+                {t('panel.newSession')}
+              </Button>
+            </>
           )}
       </div>
 
@@ -235,23 +243,25 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
         />
       )}
 
-      {showSkeleton && (
-        <div className="ghx-skeleton" aria-hidden="true">
-          <div className="ghx-skeleton-line" style={{ width: '92%' }} />
-          <div className="ghx-skeleton-line" style={{ width: '78%' }} />
-          <div className="ghx-skeleton-line" style={{ width: '85%' }} />
-        </div>
-      )}
-
       {showHint && (
         <EmptyState title={t('panel.detail.empty')} icon={<GitHubIcon size={24} />} />
       )}
 
       {detail !== undefined && (
         <>
-          <pre className="ghx-body" style={{ whiteSpace: 'pre-wrap' }}>
-            {body === undefined || body === '' ? t('panel.noBody') : body}
-          </pre>
+          {provisional
+            ? (
+              <div className="ghx-skeleton" aria-hidden="true">
+                <div className="ghx-skeleton-line" style={{ width: '92%' }} />
+                <div className="ghx-skeleton-line" style={{ width: '78%' }} />
+                <div className="ghx-skeleton-line" style={{ width: '60%' }} />
+              </div>
+            )
+            : (
+              <pre className="ghx-body" style={{ whiteSpace: 'pre-wrap' }}>
+                {body === undefined || body === '' ? t('panel.noBody') : body}
+              </pre>
+            )}
 
           <section className="ghx-section">
             <h3 className="ghx-section-title">{t('panel.milestone')}</h3>
@@ -314,6 +324,13 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
                 </div>
               )}
           </section>
+
+          {snapshot.mentionedLoading === true && detail.mentionedPRs.length === 0 && (
+            <section className="ghx-section">
+              <h3 className="ghx-section-title">{t('panel.mentionedPRs')}</h3>
+              <div className="ghx-muted">{t('panel.loading')}</div>
+            </section>
+          )}
 
           {detail.mentionedPRs.length > 0 && (
             <section className="ghx-section">

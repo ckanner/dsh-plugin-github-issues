@@ -200,7 +200,11 @@ export function GitHubDock({ chips, t, onRemoveChip, onOpenChip }: DockProps) {
             >
               <GitHubIcon size={11} />
               {chip.state !== 'degraded' && (
-                <span className="ghd-state" style={{ color: TONE[state].fg }}>{t(stateLabelKey(chip.card.state))}</span>
+                <span
+                  className="ghd-dot"
+                  style={{ background: chip.card.state === 'CLOSED' ? TONE.error.dot : TONE.success.dot }}
+                  aria-label={t(stateLabelKey(chip.card.state))}
+                />
               )}
               <span className="ghd-prefix" title={chip.card.repo}>{chip.card.repo}</span>
               <span className="ghd-num">{`#${String(chip.card.number)}`}</span>

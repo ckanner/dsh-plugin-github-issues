@@ -22,18 +22,19 @@
  */
 
 import type {
-  IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, ListView, OrgRefVM,
+  IssueBodyVM, IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, LinkedPRVM, ListView, OrgRefVM,
   ProjectRefVM, RepoPageVM, RepoRefVM, ScopeCatalog,
 } from '../vm.ts'
 import {
-  buildIssueDetailQuery, buildOrgProjectsQuery, buildOrgReposQuery, buildProjectItemsQuery,
+  buildIssueDetailQuery, buildMentionedPRsQuery, buildOrgProjectsQuery, buildOrgReposQuery,
+  buildProjectItemsQuery,
   buildRepoIssuesQuery, buildScopeQuery, buildSearchIssuesQuery, projectItemsFilterFor,
   searchStringForFilters, statesForView,
 } from './queries.ts'
 import type { GitHubGraphQLRequest } from './queries.ts'
 import { GitHubApiError, splitRepo } from './types.ts'
 import type { GitHubApi, GitHubApiOptions } from './types.ts'
-import { toIssueCardVM, toIssueDetailVM, toProjectItemCardVM } from './vm.ts'
+import { toIssueCardVM, toIssueDetailVM, toMentionedPRsVM, toProjectItemCardVM } from './vm.ts'
 import type { RawIssue, RawProjectItem, RawTimelineItem } from './vm.ts'
 
 /** The `User-Agent` GitHub asks every API client to send. */
@@ -214,14 +215,14 @@ interface RawRepoData {
   rateLimit?: RawRateLimit | null
 }
 
-/** A detail node: the card fields plus the cross-reference timeline. */
-interface RawIssueDetail extends RawIssue {
-  timelineItems?: { nodes?: (RawTimelineItem | null)[] | null } | null
+/** The detail response: the issue body only (the card data is already known). */
+interface RawDetailData {
+  repository?: { issue?: { id?: string | null, number?: number | null, body?: string | null } | null } | null
 }
 
-/** The detail response. */
-interface RawDetailData {
-  repository?: { issue?: RawIssueDetail | null } | null
+/** The cross-reference timeline response. */
+interface RawMentionedPRsData {
+  repository?: { issue?: { timelineItems?: { nodes?: (RawTimelineItem | null)[] | null } | null } | null } | null
 }
 
 /** The project-items response. */
@@ -543,7 +544,8 @@ class GitHubApiClient implements GitHubApi {
   private projectsBlocked = false
   private projectsError: string | undefined
   private readonly listCache = new Map<string, Timed<IssueListPage>>()
-  private readonly detailCache = new Map<string, Timed<IssueDetailVM>>()
+  private readonly detailCache = new Map<string, Timed<IssueBodyVM>>()
+  private readonly mentionedCache = new Map<string, Timed<{ mentionedPRs: LinkedPRVM[] }>>()
   private readonly orgReposCache = new Map<string, Timed<RepoPageVM>>()
   private readonly orgProjectsCache = new Map<string, Timed<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }>>()
 
@@ -639,8 +641,8 @@ class GitHubApiClient implements GitHubApi {
     return page
   }
 
-  /** One issue with its body, closing PRs, and cross-referenced PRs. */
-  async issueDetail(repo: string, number: number, signal?: AbortSignal): Promise<IssueDetailVM> {
+  /** One issue's body; the card data comes from the list the caller already has. */
+  async issueDetail(repo: string, number: number, signal?: AbortSignal): Promise<IssueBodyVM> {
     const { owner, name } = splitRepo(repo)
     if (!Number.isInteger(number) || number <= 0) {
       throw new GitHubApiError(`invalid issue number "${String(number)}"`, 'invalid_issue')
@@ -656,9 +658,29 @@ class GitHubApiClient implements GitHubApi {
     if (issue === null || issue === undefined) {
       throw new GitHubApiError(`issue ${key} was not found or is not accessible`, 'not_found', 404)
     }
-    const detail = toIssueDetailVM(issue, issue.timelineItems?.nodes)
+    // The cross-reference timeline is fetched separately and merged by the
+    // caller, so the detail pane is not held hostage by the slowest leg.
+    const detail: IssueBodyVM = { body: typeof issue.body === 'string' ? issue.body : '' }
     this.detailCache.set(key, { at: Date.now(), data: detail })
     return detail
+  }
+
+  /** The issue's cross-referenced pull requests (lazy second leg of the detail). */
+  async issueMentionedPRs(repo: string, number: number, signal?: AbortSignal): Promise<{ mentionedPRs: LinkedPRVM[] }> {
+    const { owner, name } = splitRepo(repo)
+    if (!Number.isInteger(number) || number <= 0) {
+      throw new GitHubApiError(`invalid issue number "${String(number)}"`, 'invalid_issue')
+    }
+    const key = `${repo}#${String(number)}`
+    const cached = this.mentionedCache.get(key)
+    if (cached !== undefined && Date.now() - cached.at < DETAIL_TTL_MS) return cached.data
+    const data = this.unwrap<RawMentionedPRsData>(await this.request(
+      buildMentionedPRsQuery({ owner, name, number }),
+      signal,
+    ))
+    const result = { mentionedPRs: toMentionedPRsVM(data.repository?.issue?.timelineItems?.nodes) }
+    this.mentionedCache.set(key, { at: Date.now(), data: result })
+    return result
   }
 
   /** Drop cached responses; `all` (or no argument) also drops the scope catalog. */
@@ -669,6 +691,7 @@ class GitHubApiClient implements GitHubApi {
     }
     if (scope === 'detail') {
       this.detailCache.clear()
+      this.mentionedCache.clear()
       return
     }
     this.scopesCache = undefined
@@ -678,6 +701,7 @@ class GitHubApiClient implements GitHubApi {
     this.projectsError = undefined
     this.listCache.clear()
     this.detailCache.clear()
+    this.mentionedCache.clear()
   }
 
   /** Build the catalog: viewer, organizations (GraphQL + REST union), and repositories. */

@@ -41,6 +41,8 @@ export interface PanelSnapshot {
   selected?: IssueCardVM | undefined
   detail?: IssueDetailVM | undefined
   detailLoading: boolean
+  /** True while the detail's cross-referenced PRs (the slow second leg) load. */
+  mentionedLoading?: boolean | undefined
   /** The issue pinned to the composer dock, kept in sync with the list. */
   pinnedCard?: IssueCardVM | undefined
   /** An issue a one-click handoff asked the composer dock to insert. */
