@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.5 (unreleased)
+
+- The in-composer issue card now shows only the GitHub icon, `org/repo#number`
+  and the remove control; the issue state ("open") belongs to the linked chip
+  below and was redundant inside the card.
+- Fix: sending could fail to record the issue link when the composer skipped the
+  transient submitting phase (fast send). The intercepted send now confirms the
+  draft cleared after submitting and records the link from that result; the phase
+  observation stays as a backup (the link write is idempotent).
+
 ## 0.4.4 (unreleased)
 
 - The in-composer issue card no longer shows the redundant "pending" badge: the

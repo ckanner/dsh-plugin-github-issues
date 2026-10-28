@@ -12,8 +12,7 @@
 import type { IssueCardVM } from '../../vm.ts'
 import type { Translate } from '../context.ts'
 import { CloseGlyph, GitHubIcon } from './Icon.tsx'
-import { CONTROLS_CSS, StyleSheet, TONE } from './controls.tsx'
-import { stateLabelKey, stateTone } from './format.ts'
+import { CONTROLS_CSS, StyleSheet } from './controls.tsx'
 
 /** The stylesheet chunk owned by the in-composer pending chip. */
 export const PENDING_CSS = `
@@ -22,7 +21,6 @@ export const PENDING_CSS = `
 .ghp3-chip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .ghp3-chip:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}
 .ghp3-ref{font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ghp3-state{flex:none;font-size:10px}
 .ghp3-remove{pointer-events:auto;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;flex:none}
 .ghp3-remove:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 `.trim()
@@ -39,7 +37,6 @@ export function GitHubPendingChip(props: {
   onRemove(): void
 }) {
   const { card, t, onOpenPanel, onRemove } = props
-  const tone = stateTone(card.state, card.stateReason)
   const ref = `${card.repo}#${String(card.number)}`
   return (
     <div className="ghp3-row" data-github-pending>
@@ -47,7 +44,6 @@ export function GitHubPendingChip(props: {
       <button type="button" className="ghp3-chip" title={`${ref} · ${card.title}\n${t('pending.tip')}`} onClick={onOpenPanel}>
         <GitHubIcon size={12} />
         <span className="ghp3-ref">{ref}</span>
-        <span className="ghp3-state" style={{ color: TONE[tone].fg }}>{t(stateLabelKey(card.state))}</span>
       </button>
       <button type="button" className="ghp3-remove" aria-label={t('dock.removeDraft')} onClick={onRemove}>
         <CloseGlyph size={12} />

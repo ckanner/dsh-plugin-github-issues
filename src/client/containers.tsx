@@ -246,10 +246,28 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
     const send = (): void => {
       if (sending.current) return
       sending.current = true
-      const composed = composeHandoffPrompt(store.promptFor(pending), latestInput.current?.draft ?? '')
+      const card = pending
+      const composed = composeHandoffPrompt(store.promptFor(card), latestInput.current?.draft ?? '')
       inputActions.setDraft(composed)
-      // Let the draft commit before asking the composer to submit it.
-      window.setTimeout(() => { inputActions.submit() }, 16)
+      // Let the draft commit, submit, then confirm: a successful send clears the
+      // draft. Recording the link from that result does not depend on catching a
+      // transient composer phase, which a fast send can skip entirely.
+      window.setTimeout(() => {
+        inputActions.submit()
+        window.setTimeout(() => {
+          const after = latestInput.current?.draft ?? ''
+          const cleared = !after.includes(`${card.repo}#${String(card.number)}`)
+          if (!cleared) {
+            sending.current = false
+            return
+          }
+          if (sessionId !== undefined) void store.linkIssue(card, sessionId)
+          setPending(undefined)
+          markerSeen.current = false
+          submitSeen.current = false
+          sending.current = false
+        }, 700)
+      }, 16)
     }
     const onClick = (event: MouseEvent): void => {
       const card = composerCard()
