@@ -3,9 +3,11 @@
  *
  * The build produces two halves: the Host package under `lib/`, and the browser
  * bundle `lib/client.js` that the loader mounts from the package's `./client`
- * export. This check packs the package metadata (no scripts, so the prebuilt
- * artifact is inspected, not rebuilt) and asserts the files the DSH install path
- * needs are present and that development-only inputs stay out.
+ * export. This check packs the package to a temporary directory (scripts are
+ * disabled, so the prebuilt artifact is inspected, not rebuilt), then reads the
+ * tarball's own file list. A tarball is inspected instead of `npm pack --json`
+ * because some npm versions still run lifecycle scripts on a dry run and their
+ * stdout makes the JSON unparsable.
  *
  *   node scripts/verify-package-contents.mjs
  *
@@ -13,29 +15,33 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import assert from 'node:assert/strict'
 
 const root = new URL('..', import.meta.url).pathname
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 
-/** Run `npm pack --dry-run` and return the file list it would ship. */
+/** Pack the package into a temporary directory and return the tarball's files. */
 function packedFiles() {
-  const output = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
-    cwd: root,
-    encoding: 'utf8',
-    // Older npm bundles still run `prepare` for a dry-run pack even with the CLI
-    // flag, and its stdout would corrupt the JSON; the env variable is honoured
-    // by every version.
-    env: { ...process.env, npm_config_ignore_scripts: 'true' },
-  })
-  // Belt and braces: if a lifecycle script still printed something, parse from
-  // the first JSON array character.
-  const start = output.indexOf('[')
-  assert.notEqual(start, -1, 'npm pack --json printed no JSON array')
-  const [info] = JSON.parse(output.slice(start))
-  assert.ok(info !== undefined, 'npm pack --json returned no entry')
-  return info.files.map(entry => entry.path)
+  const directory = mkdtempSync(join(tmpdir(), 'dsh-plugin-github-issues-pack-'))
+  try {
+    const packed = execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', directory], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, npm_config_ignore_scripts: 'true' },
+    })
+    const tarball = join(directory, packed.trim().split('\n').pop() ?? '')
+    const listing = execFileSync('tar', ['-tzf', tarball], { encoding: 'utf8' })
+    return listing
+      .split('\n')
+      .map(path => path.trim())
+      .filter(path => path !== '' && !path.endsWith('/'))
+      .map(path => path.replace(/^package\//, ''))
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 }
 
 const files = packedFiles()
