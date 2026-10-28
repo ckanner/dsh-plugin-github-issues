@@ -17,10 +17,10 @@ import { renderPrompt } from '../prompt.ts'
 import { REMOTE_NAMESPACE } from '../remote-methods.ts'
 import {
   DEFAULT_PREFS, type GitHubStatus, type IssueCardVM, type IssueDetailVM, type IssueLinkRecord,
-  type IssueListPage, type IssueListRequest, type Prefs, type ProjectRefVM, type RepoPageVM,
-  type ScopeCatalog,
+  type IssueListPage, type IssueListRequest, type Prefs, type PrefsPatch, type ProjectRefVM,
+  type RepoPageVM, type ScopeCatalog,
 } from '../vm.ts'
-import type { ClientContext } from './context.ts'
+import type { ClientContext, ClientRuntime } from './context.ts'
 import { RemoteRefusal, unwrap, type RemoteResult } from './result.ts'
 import type { PanelActions, PanelError, PanelSnapshot } from './viewmodel.ts'
 
@@ -45,7 +45,7 @@ interface RemoteApi {
   listIssues(request: IssueListRequest): Promise<RemoteResult<IssueListPage>>
   issueDetail(repo: string, number: number): Promise<RemoteResult<IssueDetailVM>>
   loadPrefs(): Promise<RemoteResult<Prefs>>
-  savePrefs(patch: Partial<Prefs>): Promise<RemoteResult<Prefs>>
+  savePrefs(patch: PrefsPatch): Promise<RemoteResult<Prefs>>
   refresh(): Promise<RemoteResult<{ ok: true }>>
   links(): Promise<RemoteResult<IssueLinkRecord[]>>
   linkIssue(repo: string, number: number, sessionId: string): Promise<RemoteResult<IssueLinkRecord[]>>
@@ -106,7 +106,11 @@ export class GitHubStore implements PanelActions {
    * @param ctx - the browser plugin context.
    * @param mounting - settles when the hand-written Remote namespace is mounted.
    */
-  constructor(private readonly ctx: ClientContext, private readonly mounting: Promise<string | undefined>) {
+  constructor(
+    private readonly ctx: ClientContext,
+    private readonly runtime: ClientRuntime,
+    private readonly mounting: Promise<string | undefined>,
+  ) {
     void mounting.then(() => undefined)
   }
 
@@ -144,12 +148,19 @@ export class GitHubStore implements PanelActions {
         remote.status().then(result => unwrap(result)),
         remote.loadPrefs().then(result => unwrap(result)),
       ])
+      // A project belongs to an organization. Older state files (or a previous
+      // session before the cascade shipped) may carry a project id without one;
+      // honoring it would scope the list to a board the picker never shows.
+      const sanePrefs = prefs.projectId !== undefined && prefs.org === undefined
+        ? { ...prefs, projectId: undefined, repo: prefs.repo }
+        : prefs
       this.update({
         status,
-        prefs,
+        prefs: sanePrefs,
         projectsBlocked: status.missingProjectScope,
         loading: false,
       })
+      if (sanePrefs !== prefs) void this.savePrefs({ projectId: null })
       void this.loadCatalog()
       void this.loadLinks()
       if (prefs.org !== undefined) void this.loadOrgScope(prefs.org)
@@ -204,7 +215,7 @@ export class GitHubStore implements PanelActions {
       after,
     }
     if (prefs.org !== undefined) request.org = prefs.org
-    if (prefs.projectId !== undefined) request.projectId = prefs.projectId
+    if (prefs.org !== undefined && prefs.projectId !== undefined) request.projectId = prefs.projectId
     if (prefs.repo !== undefined) request.repos = [prefs.repo]
     return request
   }
@@ -364,19 +375,19 @@ export class GitHubStore implements PanelActions {
 
   setOrg(org: string | undefined): void {
     // A new organization invalidates the project and repository selected inside
-    // the previous one.
-    void this.savePrefs({ org, projectId: undefined, repo: undefined }, async saved => {
+    // the previous one. `null` (not undefined) is what clears over the wire.
+    void this.savePrefs({ org: org ?? null, projectId: null, repo: null }, async saved => {
       this.update({ orgProjects: undefined, orgRepos: undefined })
       if (saved.org !== undefined) await this.loadOrgScope(saved.org)
     })
   }
 
   setProject(projectId: string | undefined): void {
-    void this.savePrefs({ projectId })
+    void this.savePrefs({ projectId: projectId ?? null })
   }
 
   setRepo(repo: string | undefined): void {
-    void this.savePrefs({ repo })
+    void this.savePrefs({ repo: repo ?? null })
   }
 
   setAssignee(assignee: string): void {
@@ -405,7 +416,7 @@ export class GitHubStore implements PanelActions {
   }
 
   async savePrefs(
-    patch: Partial<Prefs>,
+    patch: PrefsPatch,
     after?: (saved: Prefs) => Promise<void> | void,
   ): Promise<void> {
     try {
@@ -433,7 +444,7 @@ export class GitHubStore implements PanelActions {
 
   unpin(): void {
     this.update({ pinnedCard: undefined, pendingHandoff: undefined })
-    void this.savePrefs({ pinned: undefined })
+    void this.savePrefs({ pinned: null })
   }
 
   handoff(card: IssueCardVM): void {
@@ -441,7 +452,7 @@ export class GitHubStore implements PanelActions {
     this.update({ pendingHandoff: card })
     // Selecting the Conversation mounts its composer; the dock consumes the
     // pending handoff when it renders and writes the prompt into the draft.
-    this.ctx.layout?.selectPanel(null)
+    this.service<{ selectPanel(id: string | null): void }>('layout')?.selectPanel(null)
   }
 
   copyPrompt(card: IssueCardVM): void {
@@ -577,15 +588,20 @@ export class GitHubStore implements PanelActions {
     }
   }
 
+  /** Read one optional client service without tripping the context proxy. */
+  private service<T>(name: string): T | undefined {
+    return this.runtime.getService(name) as T | undefined
+  }
+
   /** Open (navigate to) one Session. */
   openSession(sessionId: string): void {
-    this.ctx.uiWorkspace?.openSession(sessionId)
+    this.service<{ openSession(id: string): void }>('uiWorkspace')?.openSession(sessionId)
   }
 
   /** Open the GitHub panel focused on one issue. */
   openInPanel(card: IssueCardVM): void {
     this.update({ selected: card, detail: undefined, detailLoading: true })
-    this.ctx.layout?.selectPanel('github')
+    this.service<{ selectPanel(id: string | null): void }>('layout')?.selectPanel('github')
     void (async () => {
       try {
         const remote = await this.api()

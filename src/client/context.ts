@@ -164,6 +164,19 @@ export interface SnapshotSource<T> {
   subscribe(listener: () => void): () => void
 }
 
+/**
+ * A plain bridge to the Cordis context.
+ *
+ * Reading a service *property* on the context (`ctx.sessions`) requires it to be
+ * declared in the plugin's `inject` list and throws otherwise; a render must never
+ * depend on that. The plugin hands the React tree this lazy `getService` instead,
+ * so services are resolved at use time through `ctx.get`.
+ */
+export interface ClientRuntime {
+  /** Read one optional service by key; never throws for an absent service. */
+  getService(name: string): unknown
+}
+
 /** The client plugin context. */
 export interface ClientContext {
   /** Read one service by key (used for the plugin's own Remote namespace). */

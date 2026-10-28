@@ -10,8 +10,8 @@
 
 import type { InputActions, Translate } from './context.ts'
 import type {
-  GitHubStatus, IssueCardVM, IssueDetailVM, IssueLinkRecord, IssueListPage, ProjectRefVM, Prefs,
-  RepoPageVM, ScopeCatalog,
+  GitHubStatus, IssueCardVM, IssueDetailVM, IssueLinkRecord, IssueListPage, Prefs, PrefsPatch,
+  ProjectRefVM, RepoPageVM, ScopeCatalog,
 } from '../vm.ts'
 
 /** One panel error, in a shape the renderer can display. */
@@ -97,8 +97,8 @@ export interface PanelActions {
   selectIssue(card: IssueCardVM): void
   /** Close the detail pane. */
   closeDetail(): void
-  /** Persist one preference patch. */
-  savePrefs(patch: Partial<Prefs>): void
+  /** Persist one preference patch; `null` clears a selection. */
+  savePrefs(patch: PrefsPatch): void
   /** Pin one issue to the composer dock and persist it. */
   pin(card: IssueCardVM): void
   /** Unpin the composer dock's issue. */

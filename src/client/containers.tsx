@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import type {
-  ClientContext, SessionKit, SessionsSnapshot, SnapshotSource, Translate, WorkspacesSnapshot,
+  ClientRuntime, SessionKit, SessionsSnapshot, SnapshotSource, Translate, WorkspacesSnapshot,
 } from './context.ts'
 import type { GitHubStore } from './store.ts'
 import type { IssueCardVM, IssueLinkRecord } from '../vm.ts'
@@ -27,7 +27,7 @@ import { GitHubSettings } from './views/Settings.tsx'
 interface ContainerProps {
   store: GitHubStore
   t: Translate
-  ctx: ClientContext
+  runtime: ClientRuntime
 }
 
 /** A stable empty session catalog, so the hook order never depends on props. */
@@ -78,10 +78,12 @@ export function resolveSessionLink(
 }
 
 /** The full-page GitHub panel. */
-export function PageHost({ store, t, ctx }: ContainerProps) {
+export function PageHost({ store, t, runtime }: ContainerProps) {
   const snapshot = usePanel(store)
-  const sessions = useCatalog(ctx.sessionCatalog, EMPTY_SESSIONS)
-  const workspaces = useCatalog(ctx.workspaceCatalog, EMPTY_WORKSPACES)
+  const sessionCatalog = (runtime.getService('sessions') as { list?: SnapshotSource<SessionsSnapshot> } | undefined)?.list
+  const workspaceCatalog = (runtime.getService('workspaces') as { list?: SnapshotSource<WorkspacesSnapshot> } | undefined)?.list
+  const sessions = useCatalog(sessionCatalog, EMPTY_SESSIONS)
+  const workspaces = useCatalog(workspaceCatalog, EMPTY_WORKSPACES)
   const resolveSession = useCallback(
     (sessionId: string) => resolveSessionLink(sessions, workspaces, sessionId),
     [sessions, workspaces],
@@ -93,10 +95,12 @@ export function PageHost({ store, t, ctx }: ContainerProps) {
 type DockKit = SessionKit
 
 /** The composer dock: chips for linked issues and the send-detection seam. */
-export function DockHost({ store, t, ctx, inputActions, sessionId, useInput }: ContainerProps & DockKit) {
+export function DockHost({ store, t, runtime, inputActions, sessionId, useInput }: ContainerProps & DockKit) {
   const snapshot = usePanel(store)
-  const sessions = useCatalog(ctx.sessionCatalog, EMPTY_SESSIONS)
-  const workspaces = useCatalog(ctx.workspaceCatalog, EMPTY_WORKSPACES)
+  const sessionCatalog = (runtime.getService('sessions') as { list?: SnapshotSource<SessionsSnapshot> } | undefined)?.list
+  const workspaceCatalog = (runtime.getService('workspaces') as { list?: SnapshotSource<WorkspacesSnapshot> } | undefined)?.list
+  const sessions = useCatalog(sessionCatalog, EMPTY_SESSIONS)
+  const workspaces = useCatalog(workspaceCatalog, EMPTY_WORKSPACES)
   const resolveSession = useCallback(
     (id: string) => resolveSessionLink(sessions, workspaces, id),
     [sessions, workspaces],
@@ -210,7 +214,7 @@ export function DockHost({ store, t, ctx, inputActions, sessionId, useInput }: C
 }
 
 /** The GitHub section of the Settings page. */
-export function SettingsHost({ store, t }: Omit<ContainerProps, 'ctx'> & { ctx?: ClientContext }) {
+export function SettingsHost({ store, t }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime }) {
   const snapshot = usePanel(store)
   const resolveSession = (sessionId: string) => ({
     sessionId,

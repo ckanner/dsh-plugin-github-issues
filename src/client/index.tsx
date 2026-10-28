@@ -11,7 +11,7 @@
  */
 
 import { DockHost, GitHubRailIcon, PageHost, SettingsHost } from './containers.tsx'
-import type { ClientContext } from './context.ts'
+import type { ClientContext, ClientRuntime } from './context.ts'
 import { DICTS, NS } from './locale.ts'
 import { remoteContribution } from './remote.ts'
 import { GitHubStore } from './store.ts'
@@ -40,7 +40,13 @@ export function apply(ctx: ClientContext): void {
     (error: unknown) => (error instanceof Error ? error.message : String(error)),
   )
 
-  const store = new GitHubStore(ctx, mounting)
+  // `ctx.get` requires no `inject` declaration and never throws for an absent
+  // service; property access on the context proxy does. Keep that detail here.
+  const runtime: ClientRuntime = {
+    getService: name => ctx.get(name),
+  }
+
+  const store = new GitHubStore(ctx, runtime, mounting)
   ctx.effect(() => {
     store.start()
     return () => { store.stop() }
@@ -50,7 +56,7 @@ export function apply(ctx: ClientContext): void {
     name: 'main',
     key: PANEL_ID,
     locale: NS,
-    inject: () => ({ store, t, ctx }),
+    inject: () => ({ store, t, runtime }),
   }, PageHost))
 
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
@@ -70,7 +76,7 @@ export function apply(ctx: ClientContext): void {
     id: 'github-issues-handoff',
     order: 30,
     locale: NS,
-    inject: () => ({ store, t, ctx }),
+    inject: () => ({ store, t, runtime }),
   }, DockHost))
 
   ctx.slots.inject('settings.section', () => ctx.slots.register({

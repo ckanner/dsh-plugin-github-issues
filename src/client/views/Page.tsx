@@ -276,7 +276,7 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
           <Select
             label={t('panel.project')}
             ariaLabel={t('panel.project')}
-            value={prefs.projectId ?? ''}
+            value={prefs.org === undefined ? '' : prefs.projectId ?? ''}
             options={projectOptions}
             disabled={prefs.org === undefined || snapshot.projectsBlocked}
             onChange={value => actions.setProject(value === '' ? undefined : value)}
@@ -426,10 +426,11 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
  * @returns the sentence to show.
  */
 function emptyTitle(prefs: Prefs, total: number | undefined, t: PageProps['t']): string {
-  if (prefs.projectId !== undefined && prefs.assignee === '@me') {
+  const projectId = prefs.org === undefined ? undefined : prefs.projectId
+  if (projectId !== undefined && prefs.assignee === '@me') {
     return t('panel.emptyProjectMe', { count: total ?? 0 })
   }
-  if (prefs.projectId !== undefined && prefs.state === 'open') {
+  if (projectId !== undefined && prefs.state === 'open') {
     return t('panel.emptyProjectOpen')
   }
   return t('panel.empty')

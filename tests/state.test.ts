@@ -36,6 +36,17 @@ test('known patches are applied', () => {
   assert.equal(next.org, 'one2x-ai')
 })
 
+test('null clears a selection (the wire form of "no value")', () => {
+  const scoped = applyPrefsPatch(DEFAULT_PREFS, { org: 'one2x-ai', projectId: 'PVT_1', repo: 'one2x-ai/mesh' })
+  assert.equal(scoped.org, 'one2x-ai')
+  assert.equal(scoped.projectId, 'PVT_1')
+  const cleared = applyPrefsPatch(scoped, { org: null, projectId: null, repo: null, pinned: null })
+  assert.equal(cleared.org, undefined)
+  assert.equal(cleared.projectId, undefined)
+  assert.equal(cleared.repo, undefined)
+  assert.equal(cleared.pinned, undefined)
+})
+
 test('the two assignee sentinels survive validation', () => {
   assert.equal(applyPrefsPatch(DEFAULT_PREFS, { assignee: '@me' }).assignee, '@me')
   assert.equal(applyPrefsPatch(DEFAULT_PREFS, { assignee: 'all' }).assignee, 'all')

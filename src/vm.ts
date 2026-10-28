@@ -265,6 +265,15 @@ export interface Prefs {
   pinned?: { repo: string; number: number } | undefined
 }
 
+/**
+ * A preference patch as it crosses the Remote wire.
+ *
+ * `undefined` properties disappear in JSON, so "clear the selection" is sent as
+ * `null`; the Host validates it into `undefined`. Every clearing control must use
+ * `null`, never an undefined value.
+ */
+export type PrefsPatch = { [K in keyof Prefs]?: Prefs[K] | null }
+
 /** The prompt a handoff writes into the composer. */
 export const DEFAULT_PROMPT_TEMPLATE = [
   '处理 GitHub Issue：{{repo}}#{{number}} {{title}}',
