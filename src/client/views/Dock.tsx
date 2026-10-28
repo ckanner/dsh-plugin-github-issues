@@ -106,7 +106,7 @@ function ChipPopover(props: {
           <CloseGlyph size={12} />
         </button>
       </div>
-      <div className="ghd-pop-title">{card.title}</div>
+      <div className="ghd-pop-title">{card.title === '' ? t('dock.loading') : card.title}</div>
       <div className="ghd-pop-meta">
         <div className="ghd-pop-row">
           <span className="ghd-pop-key">{t('panel.repo')}</span>
@@ -197,7 +197,9 @@ export function GitHubDock({ chips, t, onRemoveChip, onOpenChip }: DockProps) {
               onClick={event => toggle(chip, event.currentTarget)}
             >
               <GitHubIcon size={11} />
-              <span className="ghd-dot" style={{ background: TONE[state].dot }} aria-hidden="true" />
+              {chip.state !== 'degraded' && (
+                <span className="ghd-dot" style={{ background: TONE[state].dot }} aria-hidden="true" />
+              )}
               <span className="ghd-ref">{`${repoShort}#${String(chip.card.number)}`}</span>
               {chip.state === 'draft' && <span className="ghd-extra">{t('dock.pending')}</span>}
             </button>

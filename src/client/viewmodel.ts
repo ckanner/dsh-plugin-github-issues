@@ -71,8 +71,11 @@ export interface SessionLinkView {
 export interface ComposerIssueChip {
   /** The issue, when its card has been resolved. */
   card: IssueCardVM
-  /** `draft` while the prompt is only staged, `linked` once the handoff recorded. */
-  state: 'draft' | 'linked'
+  /**
+   * `draft` while the prompt is only staged, `linked` once the handoff recorded,
+   * `degraded` when the link is known but its issue detail has not arrived yet.
+   */
+  state: 'draft' | 'linked' | 'degraded'
   /** The resolved session links (empty for a draft chip). */
   sessions: SessionLinkView[]
 }

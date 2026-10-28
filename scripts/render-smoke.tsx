@@ -213,6 +213,7 @@ expectMarkup('dock: draft + linked chips', (
     chips={[
       { card: card(), state: 'draft', sessions: [] },
       { card: card(2530), state: 'linked', sessions: [resolveSession('session-1')] },
+      { card: { ...card(2579), title: '' }, state: 'degraded', sessions: [] },
     ]}
     onRemoveChip={() => {}}
     onOpenChip={() => {}}

@@ -94,6 +94,26 @@ export function PageHost({ store, t, runtime }: ContainerProps) {
 /** Props the dock slot's standard kit contributes. */
 type DockKit = SessionKit
 
+/** One minimal card for a link whose detail has not arrived yet. */
+function placeholderCard(repo: string, number: number): IssueCardVM {
+  return {
+    id: `${repo}#${String(number)}`,
+    repo,
+    number,
+    title: '',
+    url: `https://github.com/${repo}/issues/${String(number)}`,
+    state: 'OPEN',
+    stateReason: null,
+    isPrivate: false,
+    labels: [],
+    assignees: [],
+    updatedAt: '',
+    commentCount: 0,
+    linkedPRs: [],
+    sessionLinks: [],
+  }
+}
+
 /** The composer dock: chips for linked issues and the send-detection seam. */
 export function DockHost({ store, t, runtime, inputActions, sessionId, useInput }: ContainerProps & DockKit) {
   const snapshot = usePanel(store)
@@ -180,10 +200,16 @@ export function DockHost({ store, t, runtime, inputActions, sessionId, useInput 
   const seen = new Set<string>([...draft === undefined ? [] : [`${draft.repo}#${String(draft.number)}`]])
   for (const link of sessionLinks) {
     const key = `${link.repo}#${String(link.number)}`
-    const card = snapshot.linkCards[key]
-    if (card === undefined || seen.has(key)) continue
+    if (seen.has(key)) continue
     seen.add(key)
-    chips.push({ card, state: 'linked', sessions: [resolveSession(link.sessionId)] })
+    const live = snapshot.linkCards[key]
+    // A persisted link is enough to draw the chip: its detail may still be in
+    // flight, and a failed detail request must not hide the session's issue.
+    chips.push({
+      card: live ?? placeholderCard(link.repo, link.number),
+      state: live === undefined ? 'degraded' : 'linked',
+      sessions: [resolveSession(link.sessionId)],
+    })
   }
 
   return (
