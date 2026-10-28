@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+- One-click handoff now opens a fresh Session instead of using the on-screen one.
+  The Workspace is resolved by: source Session > a Session already linked to the
+  same repository > directory/title matching the repository name > Host default.
+- The pending handoff appears as an attachment-like bar above the composer
+  (`pending · org/repo#number · title · open in panel · remove`), which is also
+  visible in a blank new Session where the composer dock row below the input is
+  not rendered. It is stamped with its target Session so no other composer can
+  steal it.
+- Only an observed send records the link; clearing or removing the pending bar
+  withdraws it without writing anything.
+- Dragging from the right column still stages into the current Session and shows
+  the same pending bar.
+
 ## 0.3.1 (unreleased)
 
 - Fix: clearing the composer no longer records a handoff. Only an observed send

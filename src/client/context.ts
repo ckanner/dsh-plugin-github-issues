@@ -106,6 +106,13 @@ export interface UiWorkspaceService {
   openSession(sessionId: string): void
 }
 
+/** The on-screen Session pointer the handoff resolver reads. */
+export interface UiSessionService {
+  adapter?: {
+    current?: SnapshotSource<{ key?: string }>
+  }
+}
+
 /** Session retention and scope addressing. */
 export interface SessionsService {
   /**
@@ -157,6 +164,8 @@ export interface SessionsSnapshot {
 export interface WorkspaceEntrySnapshot {
   workspaceId?: string
   title?: string | null
+  /** The Workspace directory, when the catalog carries it. */
+  path?: string
   sessionIds?: readonly string[]
 }
 

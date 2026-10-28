@@ -195,10 +195,10 @@ assert.deepEqual(
     'sidebar.panellist:github',
     'conversation.composer.dock:github-issues-handoff',
     'settings.section:github-issues',
-    'conversation.input.dock:github-issues-drop',
+    'conversation.input.dock:github-issues-input',
     'sidebar.right.pane.tab:github-issues',
   ],
-  'the bundle must contribute the panel page, rail icon, chip row, settings section, drop zone, and right-sidebar page',
+  'the bundle must contribute the panel page, rail icon, chip row, settings section, input dock, and right-sidebar page',
 )
 
 assert.deepEqual(injectCalls, [['sidebarRightTabs']], 'the right-sidebar page must wait for its optional service')

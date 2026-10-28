@@ -6,8 +6,9 @@ This plugin adds a **GitHub panel** to the DSH Web GUI: pick a repository or a
 Projects v2 board, read the issues assigned to you (or created by you, or all
 open), and see each issue's state, milestone, labels, priority, assignees, and
 linked pull-request status. Open the `Issues` tab in the right column and drag
-an issue into the composer — or use a one-click handoff — to give the agent a
-well-formed task prompt.
+an issue into the composer — or use the one-click handoff — to give the agent a
+well-formed task prompt. A one-click handoff opens a new Session in the matching
+Workspace; dragging from the right column stages into the current Session.
 
 It is **read-only**: the plugin never writes to GitHub.
 
@@ -16,7 +17,7 @@ It is **read-only**: the plugin never writes to GitHub.
 | Surface | Where | What |
 |---|---|---|
 | GitHub panel | left rail icon → `main` panel | filter, list, detail (body, milestone progress, labels, priority, assignees, linked/mentioned PRs with checks and review state) |
-| Handoff chip | composer dock, under the input | the session's issue as `org/repo#number`; click it for a detail popover, drag issues here from the right column |
+| Handoff chip | above the composer (pending) and in the composer dock (linked) | the pending issue bar shows `org/repo#number` with open/remove; linked issues sit in the dock below with a detail popover |
 | Issues right column | right sidebar tab | the same filtered issue list beside the Conversation; drag a row into the composer to hand it over |
 | GitHub settings | Settings → GitHub | `gh` auth status and scopes, handoff behavior, prompt template |
 

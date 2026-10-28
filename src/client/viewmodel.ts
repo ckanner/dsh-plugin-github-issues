@@ -147,24 +147,13 @@ export interface PageProps {
   resolveSession: (sessionId: string) => SessionLinkView
 }
 
-/** Props of the composer dock strip. */
-export interface DockProps extends PageProps {
-  /** Composer actions; absent until the session's composer is mounted. */
-  inputActions?: InputActions
-  sessionId?: string
-  /** Whether a composer can accept the handoff right now. */
-  composerReady: boolean
-  /** Fill the composer draft with this issue and leave sending to the user. */
-  onInsert(card: IssueCardVM): void
-  /** Fill the composer draft and submit it immediately. */
-  onSend(card: IssueCardVM): void
-  /** Accept one dropped card (custom MIME or plain-text prompt). */
-  onDropIssue(card: IssueCardVM): void
-  /** Accept a dropped plain-text payload (e.g. an issue brief from elsewhere). */
-  onDropText(text: string): void
-  /** Chips this session renders above the composer. */
+/** Props of the composer dock strip: the linked chips only. */
+export interface DockProps {
+  /** Linked-issue chips this Session renders below the composer. */
   chips: ComposerIssueChip[]
-  /** Remove a draft chip or unlink a linked chip from this session. */
+  /** Translate function. */
+  t: Translate
+  /** Remove one linked chip from this Session (unlink). */
   onRemoveChip(chip: ComposerIssueChip): void
   /** Open the GitHub panel focused on a chip's issue. */
   onOpenChip(chip: ComposerIssueChip): void

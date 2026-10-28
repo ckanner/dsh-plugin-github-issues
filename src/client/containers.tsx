@@ -21,6 +21,7 @@ import type { ComposerIssueChip, SessionLinkView } from './viewmodel.ts'
 import { GitHubDock } from './views/Dock.tsx'
 import { GitHubDropZone } from './views/DropZone.tsx'
 import { GitHubIcon } from './views/Icon.tsx'
+import { GitHubPendingBar } from './views/Pending.tsx'
 import { GitHubPage } from './views/Page.tsx'
 import { GitHubSettings } from './views/Settings.tsx'
 import { GitHubSidebar } from './views/Sidebar.tsx'
@@ -116,8 +117,8 @@ function placeholderCard(repo: string, number: number): IssueCardVM {
   }
 }
 
-/** The composer dock: chips for linked issues and the send-detection seam. */
-export function DockHost({ store, t, runtime, inputActions, sessionId, useInput }: ContainerProps & DockKit) {
+/** The composer dock: the linked-issue chips of this Session. */
+export function DockHost({ store, t, runtime, sessionId }: ContainerProps & SessionKit) {
   const snapshot = usePanel(store)
   const sessionCatalog = (runtime.getService('sessions') as { list?: SnapshotSource<SessionsSnapshot> } | undefined)?.list
   const workspaceCatalog = (runtime.getService('workspaces') as { list?: SnapshotSource<WorkspacesSnapshot> } | undefined)?.list
@@ -127,96 +128,15 @@ export function DockHost({ store, t, runtime, inputActions, sessionId, useInput 
     (id: string) => resolveSessionLink(sessions, workspaces, id),
     [sessions, workspaces],
   )
-  // The session slot always contributes `useInput`; the optional call keeps the
-  // component usable in a composition that omits the conversation.
-  const input = useInput === undefined ? undefined : useInput(state => state)
-  const [draft, setDraft] = useState<IssueCardVM | undefined>(undefined)
-  const lastDraft = useRef('')
-  /** The marker was in the draft at least once (the prompt was actually written). */
-  const markerSeen = useRef(false)
-  /** The composer left `plain` while the marker was present: a send, not a manual clear. */
-  const submitSeen = useRef(false)
-  const marker = draft === undefined ? '' : `${draft.repo}#${String(draft.number)}`
 
-  // One-click handoff switches to the Conversation; when its dock mounts, the
-  // pending issue is written into the composer exactly once.
-  useEffect(() => {
-    const pending = store.consumeHandoff(sessionId)
-    if (pending === undefined) return
-    markerSeen.current = false
-    submitSeen.current = false
-    setDraft(pending)
-    if (inputActions !== undefined) {
-      inputActions.setDraft(store.promptFor(pending))
-      if (store.getSnapshot().prefs.handoffMode === 'send') inputActions.submit()
-    }
-  }, [snapshot.pendingHandoff, snapshot.pendingHandoffSession, inputActions, sessionId, store])
-
-  // `conversation.input.dock` is a session slot: the renderer only mounts it for
-  // a real session, so the links of that session are the chips to resolve.
+  // The dock follows the session it is mounted for; links are global records.
   const sessionLinks = snapshot.links.filter(link => link.sessionId === sessionId)
   useEffect(() => {
     if (sessionLinks.length !== 0) void store.ensureCards(sessionLinks)
   }, [snapshot.links, store])
 
-  // A staged prompt becomes a recorded handoff only when the composer actually
-  // submits while the marker is present. The phase leaving `plain` is the send
-  // signal; emptying the draft by hand is a withdrawal, so the chip goes away and
-  // nothing is linked.
-  useEffect(() => {
-    if (draft === undefined || input === undefined || sessionId === undefined) return
-    const text = input.draft
-    if (text.includes(marker)) {
-      markerSeen.current = true
-      if (input.phase !== 'plain') submitSeen.current = true
-    }
-    if (markerSeen.current && submitSeen.current) {
-      void store.linkIssue(draft, sessionId)
-      setDraft(undefined)
-      markerSeen.current = false
-      submitSeen.current = false
-      lastDraft.current = ''
-      return
-    }
-    if (markerSeen.current && !text.includes(marker)) {
-      // Withdrawn or replaced before sending: drop the staged chip, link nothing.
-      setDraft(undefined)
-      markerSeen.current = false
-      submitSeen.current = false
-      lastDraft.current = ''
-      return
-    }
-    lastDraft.current = text
-  }, [input, draft, marker, sessionId, store])
-
-  /** Fill the draft and remember it as the session's pending handoff. */
-  const insert = (card: IssueCardVM): void => {
-    if (inputActions === undefined) return
-    setDraft(card)
-    lastDraft.current = ''
-    inputActions.setDraft(store.promptFor(card))
-  }
-
-  /** Fill, submit, and record the handoff immediately. */
-  const send = (card: IssueCardVM): void => {
-    if (inputActions === undefined || sessionId === undefined) return
-    inputActions.setDraft(store.promptFor(card))
-    inputActions.submit()
-    void store.linkIssue(card, sessionId)
-  }
-
-  /** Insert dropped plain text at the caret, falling back to replacing the draft. */
-  const dropText = (text: string): void => {
-    if (inputActions === undefined || text === '') return
-    const span = inputActions.captureInsertion()
-    if (!inputActions.insertText(text, span)) inputActions.setDraft(text)
-  }
-
   const chips: ComposerIssueChip[] = []
-  if (draft !== undefined) {
-    chips.push({ card: draft, state: 'draft', sessions: [] })
-  }
-  const seen = new Set<string>([...draft === undefined ? [] : [`${draft.repo}#${String(draft.number)}`]])
+  const seen = new Set<string>()
   for (const link of sessionLinks) {
     const key = `${link.repo}#${String(link.number)}`
     if (seen.has(key)) continue
@@ -233,24 +153,9 @@ export function DockHost({ store, t, runtime, inputActions, sessionId, useInput 
 
   return (
     <GitHubDock
-      snapshot={snapshot}
-      actions={store}
-      t={t}
-      resolveSession={resolveSession}
-      {...sessionId === undefined ? {} : { sessionId }}
-      {...inputActions === undefined ? {} : { inputActions }}
-      composerReady={inputActions !== undefined}
-      onInsert={insert}
-      onSend={send}
-      onDropIssue={card => { insert(card) }}
-      onDropText={dropText}
       chips={chips}
+      t={t}
       onRemoveChip={chip => {
-        if (chip.state === 'draft') {
-          setDraft(undefined)
-          inputActions?.setDraft('')
-          return
-        }
         if (sessionId !== undefined) void store.unlinkSession(chip.card, sessionId)
       }}
       onOpenChip={chip => store.openInPanel(chip.card)}
@@ -258,23 +163,60 @@ export function DockHost({ store, t, runtime, inputActions, sessionId, useInput 
   )
 }
 
-/** The co-visible right-sidebar list; rows drag into the composer drop target. */
-export function SidebarHost({ store, t }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime }) {
-  const snapshot = usePanel(store)
-  return <GitHubSidebar snapshot={snapshot} actions={store} t={t} />
-}
-
 /**
- * The handoff drop target in `conversation.input.dock`.
+ * The input dock above the composer: the pending handoff chip and the drop target.
  *
- * It only renders while a drag is in flight. While it is mounted the whole window
- * accepts the drop (so the user can release over the composer card, the
- * transcript, or the bar itself); a drop inside the right sidebar is treated as a
- * cancel so dragging back where it started never hands the issue over.
+ * The pending chip lives *above* the input like an attachment preview (the user's
+ * original request), which also makes it visible in a blank handoff Session where
+ * the composer dock row below the input is not rendered. This component owns the
+ * staging: it consumes a pending handoff stamped for this Session, writes the
+ * prompt, records the link only on an observed send, and withdraws the chip when
+ * the draft is emptied or replaced.
  */
-export function DropZoneHost({ store, t, sessionId }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime, sessionId?: string }) {
+export function InputHost({ store, t, sessionId, useInput, inputActions }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime } & SessionKit) {
   const snapshot = usePanel(store)
-  const dragging = snapshot.dragging === undefined ? undefined : snapshot.dragging
+  const [pending, setPending] = useState<IssueCardVM | undefined>(undefined)
+  /** The marker was in the draft at least once (the prompt was actually written). */
+  const markerSeen = useRef(false)
+  /** The composer left `plain` while the marker was present: a send, not a manual clear. */
+  const submitSeen = useRef(false)
+  const marker = pending === undefined ? '' : `${pending.repo}#${String(pending.number)}`
+  const input = useInput === undefined ? undefined : useInput(state => state)
+
+  // The handoff that was stamped for this Session: write its prompt once.
+  useEffect(() => {
+    const card = store.consumeHandoff(sessionId)
+    if (card === undefined) return
+    markerSeen.current = false
+    submitSeen.current = false
+    setPending(card)
+    if (inputActions !== undefined) inputActions.setDraft(store.promptFor(card))
+  }, [snapshot.pendingHandoff, snapshot.pendingHandoffSession, inputActions, sessionId, store])
+
+  // Link only on an observed send; clearing the draft withdraws the pending chip.
+  useEffect(() => {
+    if (pending === undefined || input === undefined || sessionId === undefined) return
+    const text = input.draft
+    if (text.includes(marker)) {
+      markerSeen.current = true
+      if (input.phase !== 'plain') submitSeen.current = true
+    }
+    if (markerSeen.current && submitSeen.current) {
+      void store.linkIssue(pending, sessionId)
+      setPending(undefined)
+      markerSeen.current = false
+      submitSeen.current = false
+      return
+    }
+    if (markerSeen.current && !text.includes(marker)) {
+      setPending(undefined)
+      markerSeen.current = false
+      submitSeen.current = false
+    }
+  }, [input, pending, marker, sessionId, store])
+
+  // The drop target: a drag from the right column stages into THIS Session.
+  const dragging = snapshot.dragging
   useEffect(() => {
     if (dragging === undefined) return
     const onDragOver = (event: DragEvent): void => {
@@ -289,7 +231,7 @@ export function DropZoneHost({ store, t, sessionId }: Omit<ContainerProps, 'runt
         return
       }
       event.preventDefault()
-      store.dropHandoff()
+      store.dropHandoff(sessionId)
     }
     const onDragEnd = (): void => { store.endDrag() }
     window.addEventListener('dragover', onDragOver)
@@ -300,16 +242,39 @@ export function DropZoneHost({ store, t, sessionId }: Omit<ContainerProps, 'runt
       window.removeEventListener('drop', onDrop)
       window.removeEventListener('dragend', onDragEnd)
     }
-  }, [dragging, store])
-  if (dragging === undefined) return null
+  }, [dragging, sessionId, store])
+
   return (
-    <GitHubDropZone
-      dragging={dragging}
-      t={t}
-      onDrop={() => store.dropHandoff(sessionId)}
-      onCancel={() => store.endDrag()}
-    />
+    <>
+      {pending !== undefined && (
+        <GitHubPendingBar
+          card={pending}
+          t={t}
+          onOpenPanel={() => store.openInPanel(pending)}
+          onRemove={() => {
+            setPending(undefined)
+            markerSeen.current = false
+            submitSeen.current = false
+            inputActions?.setDraft('')
+          }}
+        />
+      )}
+      {dragging !== undefined && (
+        <GitHubDropZone
+          dragging={dragging}
+          t={t}
+          onDrop={() => store.dropHandoff(sessionId)}
+          onCancel={() => store.endDrag()}
+        />
+      )}
+    </>
   )
+}
+
+/** The co-visible right-sidebar list; rows drag into the composer drop target. */
+export function SidebarHost({ store, t }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime }) {
+  const snapshot = usePanel(store)
+  return <GitHubSidebar snapshot={snapshot} actions={store} t={t} />
 }
 
 /** The GitHub section of the Settings page. */

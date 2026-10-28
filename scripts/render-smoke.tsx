@@ -17,6 +17,7 @@ import { GitHubDock } from '../src/client/views/Dock.tsx'
 import { GitHubIcon } from '../src/client/views/Icon.tsx'
 import { GitHubDropZone } from '../src/client/views/DropZone.tsx'
 import { GitHubPage } from '../src/client/views/Page.tsx'
+import { GitHubPendingBar } from '../src/client/views/Pending.tsx'
 import { GitHubSettings } from '../src/client/views/Settings.tsx'
 import { GitHubSidebar } from '../src/client/views/Sidebar.tsx'
 import type { PanelActions, PanelSnapshot } from '../src/client/viewmodel.ts'
@@ -201,19 +202,10 @@ expectMarkup('page: projects blocked', (
     resolveSession={resolveSession}
   />
 ))
-expectMarkup('dock: draft + linked chips', (
+expectMarkup('dock: linked chips', (
   <GitHubDock
-    snapshot={snapshot()}
-    actions={actions}
     t={t}
-    resolveSession={resolveSession}
-    composerReady
-    onInsert={() => {}}
-    onSend={() => {}}
-    onDropIssue={() => {}}
-    onDropText={() => {}}
     chips={[
-      { card: card(), state: 'draft', sessions: [] },
       { card: card(2530), state: 'linked', sessions: [resolveSession('session-1')] },
       { card: { ...card(2579), title: '' }, state: 'degraded', sessions: [] },
     ]}
@@ -252,15 +244,7 @@ expectMarkup('settings', <GitHubSettings snapshot={snapshot()} actions={actions}
 expectMarkup('icon', <GitHubIcon size={16} active />)
 const linked = renderToString(
   <GitHubDock
-    snapshot={snapshot()}
-    actions={actions}
     t={t}
-    resolveSession={resolveSession}
-    composerReady
-    onInsert={() => {}}
-    onSend={() => {}}
-    onDropIssue={() => {}}
-    onDropText={() => {}}
     chips={[{ card: card(), state: 'linked', sessions: [resolveSession('session-1')] }]}
     onRemoveChip={() => {}}
     onOpenChip={() => {}}

@@ -20,9 +20,13 @@ import {
   type IssueListPage, type IssueListRequest, type Prefs, type PrefsPatch, type ProjectRefVM,
   type RepoPageVM, type ScopeCatalog,
 } from '../vm.ts'
-import type { ClientContext, ClientRuntime } from './context.ts'
+import type {
+  ClientContext, ClientRuntime, SnapshotSource, UiSessionService, WorkspaceEntrySnapshot,
+  WorkspacesSnapshot,
+} from './context.ts'
 import { RemoteRefusal, unwrap, type RemoteResult } from './result.ts'
 import type { PanelActions, PanelError, PanelSnapshot } from './viewmodel.ts'
+import { resolveHandoffWorkspace, type WorkspaceCandidate } from '../workspace.ts'
 
 /** How long the store waits for its own Remote namespace before giving up. */
 const REMOTE_WAIT_MS = 15_000
@@ -488,12 +492,66 @@ export class GitHubStore implements PanelActions {
     }, 80)
   }
 
+  /** The Workspace a new handoff Session should open in, per the agreed priority. */
+  private workspaceForHandoff(repo: string): string | undefined {
+    const workspaces = (this.runtime.getService('workspaces') as
+      | { list?: SnapshotSource<WorkspacesSnapshot> }
+      | undefined)?.list?.getSnapshot()
+    const items: WorkspaceCandidate[] = []
+    for (const item of workspaces?.items ?? []) {
+      const entry = item as WorkspaceEntrySnapshot
+      if (entry.workspaceId === undefined) continue
+      items.push({
+        workspaceId: entry.workspaceId,
+        ...entry.path === undefined ? {} : { path: entry.path },
+        ...entry.title === undefined || entry.title === null ? {} : { title: entry.title },
+        sessionIds: item.sessionIds ?? [],
+      })
+    }
+    const currentSessionId = (this.runtime.getService('uiSession') as UiSessionService | undefined)
+      ?.adapter?.current?.getSnapshot()?.key
+    const linkedSessionIds = this.snapshot.links
+      .filter(link => link.repo === repo)
+      .map(link => link.sessionId)
+    return resolveHandoffWorkspace({
+      repo,
+      ...currentSessionId === undefined ? {} : { currentSessionId },
+      linkedSessionIds,
+      workspaces: items,
+    })
+  }
+
   handoff(card: IssueCardVM): void {
     this.pin(card)
-    this.update({ pendingHandoff: card, pendingHandoffSession: undefined })
-    // Selecting the Conversation mounts its composer; the dock consumes the
-    // pending handoff when it renders and writes the prompt into the draft.
-    this.service<{ selectPanel(id: string | null): void }>('layout')?.selectPanel(null)
+    type Ui = {
+      startSession(workspaceId?: string, options?: {
+        prompt?: string
+        whenDraftExists?: 'keep' | 'replace' | 'append'
+        clearPreviousDraft?: boolean
+      }): void
+      connectWorkspace(workspaceId?: string): Promise<string>
+    }
+    const uiWorkspace = this.service<Ui>('uiWorkspace')
+    if (uiWorkspace === undefined) {
+      // A composition without the workspace service: hand to the on-screen Session.
+      this.update({ pendingHandoff: card, pendingHandoffSession: undefined })
+      this.service<{ selectPanel(id: string | null): void }>('layout')?.selectPanel(null)
+      return
+    }
+    // A handoff gets its own Session so the issue's work does not take over the
+    // conversation on screen. Resolve the blank Session first so the pending
+    // chip can be stamped with its id; only that Session's composer consumes it.
+    const workspaceId = this.workspaceForHandoff(card.repo)
+    const prompt = this.promptFor(card)
+    void (async () => {
+      try {
+        const sessionId = await uiWorkspace.connectWorkspace(workspaceId)
+        this.update({ pendingHandoff: card, pendingHandoffSession: sessionId })
+        uiWorkspace.startSession(workspaceId, { prompt, whenDraftExists: 'replace' })
+      } catch (error) {
+        this.update({ error: asPanelError(error) })
+      }
+    })()
   }
 
   copyPrompt(card: IssueCardVM): void {
