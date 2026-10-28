@@ -1,105 +1,148 @@
 # dsh-plugin-github-issues
 
-Browse GitHub issues and hand one to the agent — inside DeepSeek Harness.
+English | [中文](docs/README.zh.md)
 
-This plugin adds a **GitHub panel** to the DSH Web GUI: pick a repository or a
-Projects v2 board, read the issues assigned to you (or created by you, or all
-open), and see each issue's state, milestone, labels, priority, assignees, and
-linked pull-request status. Open the `Issues` tab in the right column and drag
-an issue into the composer — or use the one-click handoff — to give the agent a
-well-formed task prompt. A one-click handoff opens a new Session in the matching
-Workspace; dragging from the right column stages into the current Session.
+[![ci](https://github.com/ckanner/dsh-plugin-github-issues/actions/workflows/ci.yml/badge.svg)](https://github.com/ckanner/dsh-plugin-github-issues/actions/workflows/ci.yml)
+[![release](https://github.com/ckanner/dsh-plugin-github-issues/actions/workflows/release.yml/badge.svg)](https://github.com/ckanner/dsh-plugin-github-issues/actions/workflows/release.yml)
+[![npm](https://img.shields.io/npm/v/dsh-plugin-github-issues.svg)](https://www.npmjs.com/package/dsh-plugin-github-issues)
+[![license](https://img.shields.io/npm/l/dsh-plugin-github-issues.svg)](LICENSE)
+
+Adds a GitHub Issues work surface to [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness):
+browse issues from your repositories and Projects v2 boards, read their details, and hand one to the
+agent. A handoff opens a new Session in the matching Workspace and stages the issue as an
+attachment-style card inside the composer; sending turns that card into the issue's task prompt.
+Handed-over issues show which Sessions own them, can be entered, and can be unlinked; one issue may be
+worked in several Sessions.
 
 It is **read-only**: the plugin never writes to GitHub.
+
+## Install
+
+From the npm registry (recommended — the package ships the built Host half and browser bundle):
+
+```sh
+dsh plugin --profile <name> add dsh-plugin-github-issues
+```
+
+Pin a version when you want reproducible profiles:
+
+```sh
+dsh plugin --profile <name> add dsh-plugin-github-issues@0.4.7
+```
+
+Restart the harness afterwards: a profile is composed at startup. Remove it with:
+
+```sh
+dsh plugin --profile <name> remove dsh-plugin-github-issues
+```
+
+From a checkout (a linked install: rebuild and restart after edits):
+
+```sh
+npm install
+npm run build
+dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
+```
+
+Every [release](https://github.com/ckanner/dsh-plugin-github-issues/releases) also carries a packed
+tarball (`dsh-plugin-github-issues.tgz`), installable by path.
+
+## Requirements
+
+- DSH Desktop with a Web GUI (developed and verified against `0.2.1-rc.3`).
+- A [`gh`](https://cli.github.com/) CLI logged in for the GitHub host you use:
+  `gh auth login`. The token stays in the OS keychain and is never written into this package's config.
+- Projects v2 support additionally needs the `read:project` scope, once:
+
+  ```sh
+  gh auth refresh -h github.com -s read:project
+  ```
+
+  Without it the panel still works; the project picker explains what is missing.
 
 ## What you get
 
 | Surface | Where | What |
 |---|---|---|
-| GitHub panel | left rail icon → `main` panel | filter, list, detail (body, milestone progress, labels, priority, assignees, linked/mentioned PRs with checks and review state) |
-| Handoff chip | above the composer (pending) and in the composer dock (linked) | the pending issue bar shows `org/repo#number` with open/remove; linked issues sit in the dock below with a detail popover |
-| Issues right column | right sidebar tab | the same filtered issue list beside the Conversation; drag a row into the composer to hand it over |
+| GitHub panel | left rail icon → main panel | organization → project/repository → assignee → state cascade (remembered across restarts), search, list, and a detail pane (body, milestone progress, labels, priority, assignees, linked/mentioned PRs with checks and review state) |
+| Issues right column | right sidebar tab | the same filtered issue list beside the Conversation, for drag-and-drop handoff |
+| Composer card | inside the input box | the staged issue: `[GitHub] owner/repo#number ×`. Type extra instructions or nothing; send converts the card into the issue prompt |
+| Linked chip | composer dock under the input | the Session's linked issue: state dot (green open / red closed) + `owner/repo#number`; click for a detail popover, remove to unlink |
+| Handoff actions | issue detail | one-click **enter Session** (latest link), **new Session for this issue**, plus a linked-Session list with per-Session enter/unlink |
 | GitHub settings | Settings → GitHub | `gh` auth status and scopes, handoff behavior, prompt template |
-
-## Requirements
-
-- DSH Desktop with a Web GUI (developed against 0.2.1-rc.3).
-- A `gh` CLI authenticated for the GitHub host you use:
-  `gh auth login` (the token stays in the OS keychain).
-- Projects v2 support additionally needs the `read:project` scope, once:
-  `gh auth refresh -h github.com -s read:project`
-
-  Without it the panel still works; the project picker explains what is missing.
-
-## Install
-
-```sh
-# from a checkout (a linked install: edits need a rebuild + restart)
-dsh plugin --profile desktop add /path/to/dsh-plugin-github-issues
-```
-
-Or install the same directory through Settings → Plugins → Add plugin, passing
-the absolute path. Restart DSH and reload the page.
-
-Uninstall:
-
-```sh
-dsh plugin --profile desktop remove dsh-plugin-github-issues
-```
 
 ## Use
 
-1. Click the GitHub icon in the left rail.
-2. Pick **Assigned to me** / **Created by me** / **All open**, or a repository, or
-   a project.
-3. Click a row to read the issue beside the list; click `owner/repo#123` to open
-   it on GitHub.
-4. To hand it to the agent:
-   - **Hand to agent** on the issue opens the Conversation with the prompt in the
-     composer (review, then send).
-   - **Drag** the row and drop it on the composer (native text drop) or on the
-     strip under the composer.
-   - The strip re-inserts the pinned issue any time: *Fill draft* or *Send now*.
-5. Settings → GitHub: check auth and scopes, choose draft-vs-send handoff, edit the
-   prompt template.
+1. Click the **GitHub** icon in the left rail.
+2. Pick an organization, a Projects v2 board or a repository, then an assignee/state filter. The
+   selection is remembered in the profile's UI state (not in the plugin config).
+3. Click a row for the detail pane. `owner/repo#number` opens GitHub in the browser.
+4. Hand an issue over:
+   - **One-click** in the detail: **Hand to agent** / **New session for this issue** opens a new
+     Session in the matching Workspace with the issue staged inside the composer.
+   - **Drag** a row from the right-column **Issues** tab into the composer: it stages into the current
+     Session.
+   - Type whatever context you want, then send. The card is converted into the issue's task prompt
+     (the template from Settings) plus your text; the issue ↔ Session link is recorded at that moment.
+5. The linked chip appears under the composer. Reopen the issue later to enter that Session, start
+   another one, or unlink it. Unlinking never deletes the Session.
+6. Open the right column from the panel header (**Right column**) or from the right sidebar's own add
+   menu (page type **Issues**).
 
-The prompt template supports `{{repo}}`, `{{number}}`, `{{title}}`, `{{url}}`,
-`{{state}}`, `{{milestone}}`, `{{priority}}`, `{{assignees}}`, `{{labels}}`, and
-`{{prs}}`.
+### Which Session does a handoff use?
+
+- If the issue is already linked: **enter Session** opens the most recent link; the linked-Session list
+  lets you enter any of them.
+- A new handoff picks a Workspace by this priority: the Workspace of the current Session → the
+  Workspace of a Session already linked to the same repository → a Workspace whose directory/title
+  matches the repository name → the Host's current/most-recent Workspace.
+
+### Prompt template
+
+Settings → GitHub → Prompt template. Variables: `{{repo}}`, `{{number}}`, `{{title}}`, `{{url}}`,
+`{{state}}`, `{{milestone}}`, `{{priority}}`, `{{assignees}}`, `{{labels}}`, `{{prs}}`.
 
 ## Privacy and tokens
 
-- The GitHub token is read from `gh` on the Host process for each short session
-  and never reaches the page, the plugin configuration, or any log.
-- Issue data is fetched from GitHub by the Host process and forwarded to the
-  browser as plain view models.
-- Only UI preferences (selected repository/project, pinned issue, template) are
-  stored, under `$DSH_HOME/github-issues/state.json`.
+- The token is resolved by the Host process from `gh` and lives only in memory. It never reaches the
+  page, the plugin config, or logs.
+- GitHub requests are made by the Host; the browser only receives view models.
+- Persisted UI state is limited to filter preferences, the prompt template, and issue ↔ Session links,
+  stored at `$DSH_HOME/github-issues/state.json` (mode `0600`).
+- The plugin is read-only toward GitHub.
 
-## Limits (v0.1)
+## Limitations
 
-- Read-only: no comments, label edits, assignment, or state changes.
-- Projects v2 requires the `read:project` scope; the priority field falls back to
-  organization issue fields and then to `P0`–`P4` labels.
-- Lists poll every 60–120 s while visible; use Refresh for an immediate update.
-- A docked right-sidebar tab is planned; drag currently targets the composer.
+- Read-only: no comments, label/assignee/state writes.
+- Projects v2 needs `read:project`; priority falls back project field → organization Issue Field →
+  `P0`–`P4` labels.
+- The list polls every 60–120 s while visible; use **Refresh** for an immediate update.
+- The detail pane first asks for the body only and lazily loads cross-referenced PRs, so the slow
+  timeline never blocks the pane.
+- Converting the composer card into the prompt intercepts the native send button / Enter, which relies
+  on the composer DOM of the verified DSH version; re-check after a DSH upgrade.
+- Workspace matching for a new handoff is the heuristic priority above, not a fixed mapping.
 
 ## Development
 
 ```sh
 npm install
-npm run typecheck     # whole repo, including the browser half
-npm test              # node --test (queries, VM mapping, prompt, state)
-npm run build         # Host half (tsc) + browser bundle (esbuild)
-npm run verify:client # asserts the bundle's loader contract and slot entries
+npm run typecheck      # Host + browser halves
+npm test               # node --test (queries, VM mapping, prompt, state, workspace rules)
+npm run test:render    # offline react-dom/server smoke of the panel, dock, sidebar, drop target
+npm run build          # Host (tsc) + browser bundle (esbuild)
+npm run verify:client  # loader contract + slot/Remote registration of the browser bundle
+npm run verify:package # what npm publish would ship (host, client, bundle patch, locale, icon)
+npm run check          # all of the above, in order
 ```
 
-Architecture: a Host plugin reads the token and talks GraphQL; the browser half
-mounts its own hand-written Typert Remote namespace (`ctx.remote.$mount`) and
-calls it through `ctx.get('remote.githubIssues')`. The browser bundle imports
-only React from the page's module table — no Harness client package — so a DSH
-upgrade cannot break it through an internal component signature.
+## Releases
+
+`ci.yml` runs on every push and pull request. `release.yml` runs on a `v*` tag (or by hand): it repeats
+every CI check, publishes the new version to npm (a repository `NPM_TOKEN` secret, or npm trusted
+publishing), and records a GitHub Release carrying `dsh-plugin-github-issues.tgz`. Maintainer notes:
+[docs/RELEASING.md](https://github.com/ckanner/dsh-plugin-github-issues/blob/main/docs/RELEASING.md).
 
 ## License
 
-MIT
+MIT © Kanner

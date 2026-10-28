@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The tests run the TypeScript sources directly with Node's type stripping,
+        # so the matrix tracks the oldest and newest supported runtime.
+        node: ['22.x', '24.x']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm install --ignore-scripts
+      - name: Type check
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Offline render smoke
+        run: npm run test:render
+      - name: Build
+        run: npm run build
+      - name: Browser bundle honours the loader contract
+        run: npm run verify:client
+      - name: Published package would load
+        run: npm run verify:package

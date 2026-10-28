@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.4.7 (unreleased)
+## 0.4.7 (2026-10-28)
+
+First public release. Earlier numbered entries were development snapshots before the package was published.
 
 - Redesigned the detail pane's action and session areas. Primary actions are now
   two real buttons with icons and equal height ("open session" primary, "new
@@ -10,7 +12,7 @@
   with a tooltip that unlinking never deletes the Session. The pane close control
   is now named "close detail" so it cannot be confused with unlinking.
 
-## 0.4.6 (unreleased)
+## 0.4.6
 
 - The linked issue chip under the composer shows the issue state as a colored dot
   (green open, red closed) instead of the "open/closed" words.
@@ -26,7 +28,7 @@
   handling-session list still lets you enter any linked Session; multiple links
   per issue are allowed (up to 20).
 
-## 0.4.5 (unreleased)
+## 0.4.5
 
 - The in-composer issue card now shows only the GitHub icon, `org/repo#number`
   and the remove control; the issue state ("open") belongs to the linked chip
@@ -36,13 +38,13 @@
   draft cleared after submitting and records the link from that result; the phase
   observation stays as a backup (the link write is idempotent).
 
-## 0.4.4 (unreleased)
+## 0.4.4
 
 - The in-composer issue card no longer shows the redundant "pending" badge: the
   card itself is the pending state. It now shows only the issue icon,
   `org/repo#number`, the issue state (open/closed) and the remove control.
 
-## 0.4.3 (unreleased)
+## 0.4.3
 
 - The pending issue card now *is* the prompt: the composer stays empty (only an
   invisible placeholder keeps the native send enabled), the user may type extra
@@ -54,7 +56,7 @@
 - `composeHandoffPrompt` is a pure, unit-tested helper; the send gesture is
   intercepted at the native submit button and the editor's Enter key.
 
-## 0.4.2 (unreleased)
+## 0.4.2
 
 - The pending issue now renders as a small chip inside the composer card itself
   (the `conversation.input.overlay` floating layer), matching the attachment-row
@@ -64,7 +66,7 @@
 - Linked chips stay in the dock under the composer and still show logo, state,
   organization/repository and number with a detail popover.
 
-## 0.4.1 (unreleased)
+## 0.4.1
 
 - The pending handoff is now a proper attachment-style issue card above the
   composer: issue logo, state, `org/repo#number`, title, a pending badge, an open
@@ -76,7 +78,7 @@
 - If the issue is already linked, the panel's button is "enter Session" and no
   card is staged; the linked chip appears in that Session's composer dock.
 
-## 0.4.0 (unreleased)
+## 0.4.0
 
 - One-click handoff now opens a fresh Session instead of using the on-screen one.
   The Workspace is resolved by: source Session > a Session already linked to the
@@ -91,7 +93,7 @@
 - Dragging from the right column still stages into the current Session and shows
   the same pending bar.
 
-## 0.3.1 (unreleased)
+## 0.3.1
 
 - Fix: clearing the composer no longer records a handoff. Only an observed send
   (the composer entering `submitting`/`adjudicating` with the issue marker in the
@@ -103,7 +105,7 @@
   to open a new Session was reverted because a blank Session does not render the
   composer dock, leaving the pending chip invisible.
 
-## 0.3.0 (unreleased)
+## 0.3.0
 
 - Co-visible right-column `Issues` tab: the same cascade-filtered list beside the
   Conversation; a header button or the right column's own add menu opens it.
@@ -118,7 +120,7 @@
 - A persisted link now draws its chip immediately (degraded until the issue detail
   arrives) instead of waiting for the GitHub request.
 
-## 0.2.0 (unreleased)
+## 0.2.0
 
 - Cascade scope: organization → project/repository → assignee → state, with the
   organization, project and repository remembered across restarts.

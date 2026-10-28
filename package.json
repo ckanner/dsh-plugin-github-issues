@@ -68,7 +68,9 @@
     "test:render": "node scripts/render-smoke.mjs",
     "build:client": "node scripts/build-client.mjs",
     "verify:client": "node scripts/verify-client-bundle.mjs",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "verify:package": "node scripts/verify-package-contents.mjs",
+    "check": "npm run typecheck && npm test && npm run test:render && npm run build && npm run verify:client && npm run verify:package"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0 || >=0.2.0-rc.1 <0.3.0",
