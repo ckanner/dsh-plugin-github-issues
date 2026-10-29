@@ -81,3 +81,20 @@ print('versions:', sorted(d['versions']))
 If trusted publishing is unavailable, add a granular npm token with publish rights as the repository
 secret `NPM_TOKEN`. The workflow uses it only when present, and keeps the trusted-publishing path for
 repositories without the secret.
+
+## Installing a release into the Desktop profile
+
+After a version is on npm, point the running profile at it:
+
+```sh
+dsh plugin --profile desktop add dsh-plugin-github-issues@X.Y.Z
+```
+
+and restart DSH (a profile is composed at startup).
+
+The Desktop profile enables pnpm's supply-chain `minimumReleaseAge` policy, so a
+version published minutes ago is held back: pnpm records an exclusion entry in
+`~/.dsh/profiles/desktop/pnpm-workspace.yaml` and, in a non-interactive shell, the
+install can look like it hangs. If that happens, check the exclusion list (pnpm
+adds the new version there) and re-run the command; or pre-add
+`dsh-plugin-github-issues@X.Y.Z` to `minimumReleaseAgeExclude` before installing.
