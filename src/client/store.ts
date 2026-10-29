@@ -73,6 +73,29 @@ function asPanelError(error: unknown): PanelError {
   return { message: error instanceof Error ? error.message : String(error) }
 }
 
+/**
+ * Apply a preference patch locally, mirroring the Host's `null` clearing rule.
+ *
+ * Optimistic so a select changes and its list request start together: the Host
+ * persists in parallel, and the returned (validated) preferences replace these.
+ * @param current - the preferences currently rendered.
+ * @param patch - the patch about to be sent.
+ * @returns the preferences after the patch.
+ */
+function applyPrefsPatchLocally(current: Prefs, patch: PrefsPatch): Prefs {
+  const next: Prefs = { ...current }
+  if ('org' in patch) next.org = patch.org ?? undefined
+  if ('projectId' in patch) next.projectId = patch.projectId ?? undefined
+  if ('repo' in patch) next.repo = patch.repo ?? undefined
+  if ('milestone' in patch) next.milestone = patch.milestone ?? undefined
+  if ('assignee' in patch && patch.assignee !== null) next.assignee = patch.assignee
+  if ('state' in patch && patch.state !== null) next.state = patch.state
+  if ('handoffMode' in patch && patch.handoffMode !== null) next.handoffMode = patch.handoffMode
+  if ('promptTemplate' in patch && patch.promptTemplate !== null) next.promptTemplate = patch.promptTemplate
+  if ('pinned' in patch) next.pinned = patch.pinned ?? undefined
+  return next
+}
+
 /** Read the namespace once it is published, waiting for the async mount to settle. */
 async function waitForRemote(ctx: ClientContext): Promise<RemoteApi> {
   const deadline = Date.now() + REMOTE_WAIT_MS
@@ -150,6 +173,7 @@ export class GitHubStore implements PanelActions {
     this.update({ loading: true, error: undefined })
     try {
       const remote = await this.api()
+      const catalogLoading = this.loadCatalog()
       const [status, prefs] = await Promise.all([
         remote.status().then(result => unwrap(result)),
         remote.loadPrefs().then(result => unwrap(result)),
@@ -165,7 +189,7 @@ export class GitHubStore implements PanelActions {
       })
       if (prefs.projectId !== undefined) void this.savePrefs({ projectId: null })
       void this.loadLinks()
-      await this.loadCatalog()
+      await catalogLoading
       await this.ensureScopeSelection()
       await this.reloadList()
       this.schedulePolling(status.config.pollSeconds)
@@ -300,7 +324,7 @@ export class GitHubStore implements PanelActions {
         prefs: { ...this.snapshot.prefs, org: chosen, repo: undefined, milestone: undefined, projectId: undefined },
         orgRepos: undefined,
       })
-      await this.savePrefs({ org: chosen, projectId: null, repo: null, milestone: null })
+      await this.persistPrefs({ org: chosen, projectId: null, repo: null, milestone: null })
     }
     await this.loadOrgScope(chosen)
     await this.ensureRepoSelection()
@@ -321,7 +345,7 @@ export class GitHubStore implements PanelActions {
     if (chosen !== current) {
       this.resetMilestoneOptions()
       this.update({ prefs: { ...this.snapshot.prefs, repo: chosen, milestone: undefined } })
-      await this.savePrefs({ repo: chosen, milestone: null })
+      await this.persistPrefs({ repo: chosen, milestone: null })
     }
     await this.loadRepoMilestones(chosen)
     await this.pruneMilestone(chosen)
@@ -433,6 +457,7 @@ export class GitHubStore implements PanelActions {
       if (saved.org !== undefined) {
         await this.loadOrgScope(saved.org)
         await this.ensureRepoSelection()
+        await this.reloadList()
       }
     })
   }
@@ -500,19 +525,25 @@ export class GitHubStore implements PanelActions {
     void (async () => {
       try {
         const remote = await this.api()
-        const body = await remote.issueDetail(card.repo, card.number).then(result => unwrap(result))
+        // The body and the timeline are independent GitHub reads; start both so
+        // the pane shows as soon as the body arrives instead of waiting for one
+        // then the other.
+        const bodyLoading = remote.issueDetail(card.repo, card.number).then(result => unwrap(result))
+        const mentionedLoading = remote.issueMentionedPRs(card.repo, card.number)
+          .then(result => unwrap(result))
+          .then(result => result.mentionedPRs, () => [])
+        const body = await bodyLoading
         this.update({
           detail: { ...card, body: body.body, mentionedPRs: [] },
           detailLoading: false,
           mentionedLoading: true,
         })
-        // The timeline is the slow leg: let the pane show first, then merge it.
-        const mentioned = await remote.issueMentionedPRs(card.repo, card.number).then(result => unwrap(result))
+        const mentioned = await mentionedLoading
         const current = this.snapshot.detail
         if (current === undefined || current.repo !== card.repo || current.number !== card.number) return
         const closing = new Set(current.linkedPRs.map(pr => pr.number))
         this.update({
-          detail: { ...current, mentionedPRs: mentioned.mentionedPRs.filter(pr => !closing.has(pr.number)) },
+          detail: { ...current, mentionedPRs: mentioned.filter(pr => !closing.has(pr.number)) },
           mentionedLoading: false,
         })
       } catch (error) {
@@ -529,20 +560,45 @@ export class GitHubStore implements PanelActions {
     patch: PrefsPatch,
     after?: (saved: Prefs) => Promise<void> | void,
   ): Promise<void> {
+    const previous = this.snapshot.prefs
+    const affectsList = ['org', 'repo', 'assignee', 'state', 'milestone'].some(key => key in patch)
+    // Optimistic update: the list request carries the filters explicitly, so it
+    // can start while the Host persists the same patch. One round trip, not two.
+    this.update({ prefs: applyPrefsPatchLocally(previous, patch) })
+    let saveError: unknown
+    try {
+      const remote = await this.api()
+      const save = remote.savePrefs(patch).then(result => unwrap(result))
+      const reload = affectsList ? this.reloadList() : Promise.resolve()
+      const [saved] = await Promise.all([save, reload])
+      this.update({ prefs: saved })
+      if (affectsList) this.refreshPinnedCard()
+      else if ('handoffMode' in patch || 'promptTemplate' in patch) this.toast('settings.saved')
+      if (after !== undefined) await after(saved)
+    } catch (error) {
+      saveError = error
+      this.update({ prefs: previous, error: asPanelError(error) })
+    }
+    void saveError
+  }
+
+  /**
+   * Persist a preference patch without touching the list.
+   *
+   * Scope normalization (picking the default organization/repository) uses this
+   * so bootstrapping issues exactly one list request instead of one per default.
+   * @param patch - validated preference patch.
+   * @returns the saved preferences, or `undefined` when persistence failed.
+   */
+  private async persistPrefs(patch: PrefsPatch): Promise<Prefs | undefined> {
     try {
       const remote = await this.api()
       const saved = await remote.savePrefs(patch).then(result => unwrap(result))
-      const affectsList = ['org', 'repo', 'assignee', 'state', 'milestone'].some(key => key in patch)
       this.update({ prefs: saved })
-      if (affectsList) {
-        await this.reloadList()
-        this.refreshPinnedCard()
-      } else if ('handoffMode' in patch || 'promptTemplate' in patch) {
-        this.toast('settings.saved')
-      }
-      if (after !== undefined) await after(saved)
+      return saved
     } catch (error) {
       this.update({ error: asPanelError(error) })
+      return undefined
     }
   }
 

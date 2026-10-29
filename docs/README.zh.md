@@ -56,7 +56,7 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 
 | 界面 | 位置 | 内容 |
 |---|---|---|
-| GitHub 面板 | 左侧栏图标 → 主面板 | 组织 → 仓库 → **里程碑** → assignee → 状态 级联筛选（记住上次选择）固定在一行；组织和仓库会自动选中默认项，里程碑下拉只列当前仓库的里程碑；只有列表滚动，搜索在列表上方固定；详情栏独立滚动（正文、Milestone 进度、标签、优先级、assignee、关联/提及 PR 的 checks 与 review） |
+| GitHub 面板 | 左侧栏图标 → 主面板 | 组织 → 仓库 → **里程碑** → assignee → 状态 级联筛选（记住上次选择）固定在一行；组织和仓库会自动选中默认项，里程碑下拉只列当前仓库的里程碑；只有列表滚动，搜索在列表上方固定；详情栏独立滚动（**完整正文按 GitHub 风格 Markdown 渲染并做安全过滤**、Milestone 进度、标签、优先级、assignee、关联/提及 PR 的 checks 与 review） |
 | Issues 右栏 | 右侧栏页签 | 与对话同屏的同一份筛选列表，用于拖拽交办 |
 | 输入框卡片 | 输入框内部 | 暂存的 Issue：`[GitHub] owner/repo#number ×`。可以补充自己的文字，也可以不写；发送时卡片转成提示词 |
 | 已关联 chip | 输入框下方 dock | 当前 Session 关联的 Issue：状态圆点（open 绿 / closed 红）+ `owner/repo#number`；点击看详情，× 解除关联 |
@@ -102,6 +102,7 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 - 只读：不发评论、不改标签/指派/状态。
 - 列表使用仓库的 `issues` 连接，状态、assignee、里程碑都由 GitHub 服务端过滤（总数也是权威的）；
   里程碑通过 `filterBy.milestoneNumber` 按编号过滤。
+- 详情展示完整正文（不是摘要、也不再限制在固定高度的小框里），按 Markdown 渲染并过滤危险 HTML。
 - 里程碑的可选项来自当前仓库的完整里程碑列表（含已关闭）。
 - 优先级回退顺序：组织 Issue Field → `P0`–`P4` 标签（不再读取 Projects v2 项目字段）。
 - 列表可见时每 60–120 秒轮询一次；需要立刻更新点「刷新」。

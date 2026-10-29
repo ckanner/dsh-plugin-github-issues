@@ -81,7 +81,7 @@ export const PAGE_CSS = `
 .ghp-panel .ghp-body{display:flex;flex:1;min-height:0;margin-top:0}
 .ghp-panel .ghp-split{flex:1;min-height:0;width:100%;align-items:stretch}
 .ghp-panel .ghp-list-pane{flex:1;min-width:0;overflow:auto;overscroll-behavior:contain;padding-bottom:32px}
-.ghp-panel .ghx-pane{flex:0 0 380px;box-sizing:border-box;width:380px;max-height:100%;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:32px}
+.ghp-panel .ghx-pane{flex:0 0 420px;box-sizing:border-box;width:420px;max-height:100%;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:32px}
 .ghp-panel .ghp-scope{grid-template-columns:minmax(0,1.05fr) minmax(0,1.55fr) minmax(0,1.55fr) minmax(0,1fr) minmax(0,.8fr);gap:10px;margin-top:14px}
 @media (max-width:860px){.ghp-panel .ghp-scope{grid-template-columns:repeat(auto-fit,minmax(124px,1fr))}}
 .ghp-panel .ghp-filters{margin:12px 0 6px}

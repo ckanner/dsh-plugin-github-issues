@@ -16,6 +16,7 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 
 import type { GitHubApi, GitHubApiOptions, GhProbe, ResolvedAuth } from './github/types.ts'
 import { GitHubApiError } from './github/types.ts'
+import { normalizeRequest } from './github/list-request.ts'
 import type { PrefsStore } from './github/state.ts'
 import type {
   GitHubStatus, IssueBodyVM, IssueCardVM, IssueDetailVM, IssueLinkRecord, IssueListPage,
@@ -38,53 +39,6 @@ export interface ControllerOptions {
   prefs: PrefsStore
   /** Deployment configuration as the loader resolved it. */
   config: { authMode: string; host: string; ghPath: string; handoffMode: string; pollSeconds: number }
-}
-
-/** Validate a list request that came over the wire. */
-function normalizeRequest(input: unknown): {
-  view?: 'assigned' | 'created' | 'open' | 'repo' | 'project'
-  repos?: string[]
-  projectId?: string
-  org?: string
-  assignee: string
-  author?: string
-  state: 'open' | 'closed' | 'all'
-  first: number
-  after: string | null
-} {
-  const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>
-  const views = ['assigned', 'created', 'open', 'repo', 'project'] as const
-  const view = typeof raw.view === 'string' && (views as readonly string[]).includes(raw.view)
-    ? raw.view as (typeof views)[number]
-    : undefined
-  const states = ['open', 'closed', 'all'] as const
-  const state = typeof raw.state === 'string' && (states as readonly string[]).includes(raw.state)
-    ? raw.state as (typeof states)[number]
-    : 'open'
-  const repos = Array.isArray(raw.repos)
-    ? raw.repos.filter((entry): entry is string => typeof entry === 'string' && entry.includes('/')).slice(0, 10)
-    : undefined
-  const first = typeof raw.first === 'number' && Number.isFinite(raw.first)
-    ? Math.min(Math.max(Math.trunc(raw.first), 1), 50)
-    : 30
-  const after = typeof raw.after === 'string' && raw.after !== '' ? raw.after : null
-  const assignee = typeof raw.assignee === 'string' && raw.assignee !== ''
-    ? raw.assignee
-    : view === 'assigned' ? '@me' : 'all'
-  const author = typeof raw.author === 'string' && raw.author !== ''
-    ? raw.author
-    : view === 'created' ? '@me' : undefined
-  return {
-    ...view === undefined ? {} : { view },
-    state,
-    first,
-    after,
-    assignee,
-    ...author === undefined ? {} : { author },
-    ...repos === undefined || repos.length === 0 ? {} : { repos },
-    ...typeof raw.projectId === 'string' && raw.projectId !== '' ? { projectId: raw.projectId } : {},
-    ...typeof raw.org === 'string' && raw.org !== '' ? { org: raw.org } : {},
-  }
 }
 
 /** Remote owner of the GitHub Issues surface, namespace `githubIssues`. */

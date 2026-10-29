@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.0 (2026-10-29)
+
+- Fixed the milestone filter never reaching GitHub: the Host's Remote wire
+  validator (`normalizeRequest`) whitelisted request fields but not `milestone` /
+  `milestoneNumber`, so the client's filters were silently dropped before the
+  list query. The validator now accepts both (and has regression tests).
+- The detail pane renders the **complete** issue body as sanitized GitHub-flavored
+  Markdown (headings, lists, task lists, code blocks, tables, links, images)
+  instead of a fixed-height box of raw text; the pane is wider (420px) and
+  scrolls independently.
+- Faster interactions:
+  - filter changes update the select and start the list request immediately, while
+    the preference save runs in parallel (one round trip instead of two);
+  - bootstrap reads status, preferences and the scope catalog concurrently and
+    picks default organization/repository without extra list requests;
+  - the detail body and its mentioned-PR timeline are fetched in parallel, so the
+    pane shows as soon as the body arrives.
+- Dependencies `marked` and `dompurify` are build-time dev dependencies bundled
+  into the browser half; the published package still installs nothing extra.
+
 ## 0.6.0 (2026-10-29)
 
 - The project filter is gone. The cascade is now **organization → repository →

@@ -1,14 +1,17 @@
 /**
  * The issue detail pane shown beside the panel list.
  *
- * It renders exactly what the Host's `IssueDetailVM` carries: body text as
- * pre-wrap plain text, milestone progress, labels, assignees, linked and
- * mentioning pull requests, and the comment/update footer. The pane never
- * fetches anything itself; every action goes through `PanelActions`, and every
- * string through the namespace translate function.
+ * It renders exactly what the Host's `IssueDetailVM` carries: the full issue body
+ * as rendered GitHub-flavored Markdown (sanitised), milestone progress, labels,
+ * assignees, linked and mentioning pull requests, and the comment/update footer.
+ * The pane never fetches anything itself; every action goes through
+ * `PanelActions`, and every string through the namespace translate function.
  *
  * @module dsh-plugin-github-issues/client/views/IssueDetail
  */
+
+import DOMPurify from 'dompurify'
+import { marked } from 'marked'
 
 import type { Translate } from '../context.ts'
 import type { LinkedPRVM } from '../../vm.ts'
@@ -24,7 +27,7 @@ import {
 
 /** The stylesheet chunk owned by this module. */
 export const ISSUE_DETAIL_CSS = `
-.ghx-pane{display:flex;flex-direction:column;gap:12px;box-sizing:border-box;flex:0 0 380px;width:380px;min-width:0;padding-left:20px;border-left:0.5px solid var(--dsw-alias-border-l2)}
+.ghx-pane{display:flex;flex-direction:column;gap:12px;box-sizing:border-box;flex:0 0 420px;width:420px;min-width:0;padding-left:20px;border-left:0.5px solid var(--dsw-alias-border-l2)}
 .ghx-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
 .ghx-ref{font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .ghx-ref:hover{color:var(--dsw-alias-link);text-decoration:underline}
@@ -45,7 +48,32 @@ export const ISSUE_DETAIL_CSS = `
 .ghx-session-title{font-size:12px;line-height:16px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ghx-session-ws{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ghx-session-missing{font-size:11px;color:var(--dsw-alias-label-tertiary);flex:none}
-.ghx-body{margin:0;max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;box-sizing:border-box;padding:10px 12px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-1);font-family:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;color:var(--dsw-alias-label-primary)}
+.ghx-markdown{font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
+.ghx-markdown>:first-child{margin-top:0}
+.ghx-markdown>:last-child{margin-bottom:0}
+.ghx-markdown p{margin:0 0 8px}
+.ghx-markdown h1,.ghx-markdown h2,.ghx-markdown h3,.ghx-markdown h4,.ghx-markdown h5,.ghx-markdown h6{margin:14px 0 6px;line-height:1.35;font-weight:600}
+.ghx-markdown h1{font-size:18px}
+.ghx-markdown h2{font-size:16px}
+.ghx-markdown h3{font-size:14px}
+.ghx-markdown h4,.ghx-markdown h5,.ghx-markdown h6{font-size:13px}
+.ghx-markdown ul,.ghx-markdown ol{margin:0 0 8px;padding-left:20px}
+.ghx-markdown li{margin:2px 0}
+.ghx-markdown li>p{margin:0}
+.ghx-markdown code{font-family:var(--dsh-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;padding:1px 4px;border-radius:var(--dsw-radius-xs,4px);background:var(--dsw-alias-bg-layer-2)}
+.ghx-markdown pre{margin:0 0 10px;padding:10px 12px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-1);overflow:auto}
+.ghx-markdown pre code{padding:0;background:transparent;font-size:12px;line-height:18px;white-space:pre}
+.ghx-markdown blockquote{margin:0 0 10px;padding:2px 0 2px 12px;border-left:2px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary)}
+.ghx-markdown blockquote>*:last-child{margin-bottom:0}
+.ghx-markdown a{color:var(--dsw-alias-link);text-decoration:none}
+.ghx-markdown a:hover{text-decoration:underline}
+.ghx-markdown img{max-width:100%;height:auto;border-radius:var(--dsw-radius-sm,6px)}
+.ghx-markdown hr{border:0;border-top:0.5px solid var(--dsw-alias-border-l2);margin:12px 0}
+.ghx-markdown table{border-collapse:collapse;margin:0 0 10px;font-size:12px}
+.ghx-markdown th,.ghx-markdown td{border:0.5px solid var(--dsw-alias-border-l2);padding:4px 8px;text-align:left}
+.ghx-markdown th{background:var(--dsw-alias-bg-layer-1);font-weight:600}
+.ghx-markdown input[type=checkbox]{margin:0 4px 0 0;vertical-align:middle}
+.ghx-markdown-loading{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
 .ghx-section{display:flex;flex-direction:column;gap:6px}
 .ghx-section-title{margin:0;font-size:12px;line-height:18px;font-weight:500;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.02em}
 .ghx-muted{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
@@ -159,7 +187,8 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
   const detailFailed = detail === undefined && !snapshot.detailLoading && error !== undefined
   const showHint = detail === undefined && !snapshot.detailLoading && error === undefined
   const tone = stateTone(card.state, card.stateReason)
-  const body = detail?.body !== undefined && detail.body !== '' ? detail.body : detail?.bodyExcerpt
+  const body = detail?.body ?? ''
+  const bodyHtml = body === '' ? '' : renderMarkdown(body)
   const sessionLinks = card.sessionLinks ?? []
 
   return (
@@ -289,11 +318,9 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
                 <div className="ghx-skeleton-line" style={{ width: '60%' }} />
               </div>
             )
-            : (
-              <pre className="ghx-body" style={{ whiteSpace: 'pre-wrap' }}>
-                {body === undefined || body === '' ? t('panel.noBody') : body}
-              </pre>
-            )}
+            : bodyHtml === ''
+              ? <p className="ghx-markdown-loading">{t('panel.noBody')}</p>
+              : <div className="ghx-markdown" dangerouslySetInnerHTML={{ __html: bodyHtml }} />}
 
           <section className="ghx-section">
             <h3 className="ghx-section-title">{t('panel.milestone')}</h3>
@@ -378,4 +405,38 @@ export function IssueDetailPane({ snapshot, actions, t, resolveSession }: PagePr
       )}
     </aside>
   )
+}
+
+/** Install the GFM options once; the body is rendered on every selection. */
+marked.use({ gfm: true, breaks: true })
+
+/** Whether the sanitizer hook that hardens external links is installed. */
+let linkHookInstalled = false
+
+/**
+ * Render one issue body as sanitised GitHub-flavored Markdown.
+ *
+ * GitHub bodies are untrusted input: `marked` parses GFM, then DOMPurify removes
+ * scripts, event handlers and dangerous URLs. In the server-side render used by
+ * the smoke test there is no DOM, so the raw (already escaped by marked) HTML is
+ * returned; browsers always sanitise.
+ * @param markdown - the issue body.
+ * @returns HTML ready for `dangerouslySetInnerHTML`.
+ */
+function renderMarkdown(markdown: string): string {
+  const parsed = marked.parse(markdown, { async: false })
+  const purify = DOMPurify as unknown as {
+    sanitize?: (html: string, config?: Record<string, unknown>) => string
+    addHook?: (name: string, hook: (node: Element) => void) => void
+  }
+  if (typeof purify.sanitize !== 'function') return parsed
+  if (!linkHookInstalled && typeof purify.addHook === 'function') {
+    linkHookInstalled = true
+    purify.addHook('afterSanitizeAttributes', node => {
+      if (node.tagName !== 'A') return
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'noreferrer noopener')
+    })
+  }
+  return purify.sanitize(parsed, { ADD_ATTR: ['target'] })
 }
