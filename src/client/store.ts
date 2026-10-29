@@ -17,8 +17,8 @@ import { renderPrompt } from '../prompt.ts'
 import { REMOTE_NAMESPACE } from '../remote-methods.ts'
 import {
   DEFAULT_PREFS, type GitHubStatus, type IssueBodyVM, type IssueCardVM, type IssueDetailVM,
-  type IssueLinkRecord, type IssueListPage, type IssueListRequest, type Prefs, type PrefsPatch,
-  type RepoMilestoneVM, type RepoPageVM, type ScopeCatalog,
+  type IssueLinkRecord, type IssueListPage, type IssueListRequest, type LinkedCardsRequest,
+  type Prefs, type PrefsPatch, type RepoMilestoneVM, type RepoPageVM, type ScopeCatalog,
 } from '../vm.ts'
 import type {
   ClientContext, ClientRuntime, SnapshotSource, UiSessionService, WorkspaceEntrySnapshot,
@@ -50,6 +50,7 @@ interface RemoteApi {
   orgRepos(org: string): Promise<RemoteResult<RepoPageVM>>
   listIssues(request: IssueListRequest): Promise<RemoteResult<IssueListPage>>
   repoMilestones(repo: string): Promise<RemoteResult<{ milestones: RepoMilestoneVM[] }>>
+  linkedCards(groups: readonly LinkedCardsRequest[]): Promise<RemoteResult<IssueCardVM[]>>
   issueDetail(repo: string, number: number): Promise<RemoteResult<IssueBodyVM>>
   issueMentionedPRs(repo: string, number: number): Promise<RemoteResult<{ mentionedPRs: IssueDetailVM['mentionedPRs'] }>>
   loadPrefs(): Promise<RemoteResult<Prefs>>
@@ -127,6 +128,9 @@ export class GitHubStore implements PanelActions {
   private readonly orgScopes = new Map<string, OrgScope>()
   private remote: RemoteApi | undefined
   private started = false
+  private readonly onWindowFocus = (): void => {
+    void this.refreshLinkedCards()
+  }
   private pollTimer: ReturnType<typeof setInterval> | undefined
   private toastTimer: ReturnType<typeof setTimeout> | undefined
   private listSeq = 0
@@ -156,12 +160,20 @@ export class GitHubStore implements PanelActions {
   start(): void {
     if (this.started) return
     this.started = true
+    // The composer dock's dot must follow an issue closed in another tab: refresh
+    // the linked cards when the window regains focus, not only on the poll timer.
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('focus', this.onWindowFocus)
+    }
     void this.bootstrap()
   }
 
   /** Stop every timer this store owns. */
   stop(): void {
     this.started = false
+    if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener('focus', this.onWindowFocus)
+    }
     if (this.pollTimer !== undefined) clearInterval(this.pollTimer)
     if (this.toastTimer !== undefined) clearTimeout(this.toastTimer)
     this.pollTimer = undefined
@@ -207,6 +219,7 @@ export class GitHubStore implements PanelActions {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
       if (this.snapshot.loading || this.snapshot.loadingMore) return
       void this.reloadList(true)
+      void this.refreshLinkedCards()
     }, seconds * 1_000)
   }
 
@@ -269,6 +282,7 @@ export class GitHubStore implements PanelActions {
         loadingMore: false,
         error: undefined,
       })
+      this.syncLinkedCardsFromList()
       this.refreshPinnedCard()
     } catch (error) {
       if (seq !== this.listSeq) return
@@ -421,6 +435,7 @@ export class GitHubStore implements PanelActions {
       await this.loadCatalog()
       await this.ensureScopeSelection()
       await this.reloadList()
+      void this.refreshLinkedCards()
     })()
   }
 
@@ -441,6 +456,7 @@ export class GitHubStore implements PanelActions {
             ...next.totalCount === undefined ? {} : { totalCount: next.totalCount },
           },
         })
+        this.syncLinkedCardsFromList()
       } catch (error) {
         this.update({ loadingMore: false, error: asPanelError(error) })
       }
@@ -750,7 +766,8 @@ export class GitHubStore implements PanelActions {
       const links = await remote.links().then(result => unwrap(result))
       this.update({ links })
       this.decorateLoadedCards(links)
-      void this.ensureCards(links)
+      this.ensureCards(links)
+      void this.refreshLinkedCards()
     } catch {
       // The dock simply shows no chips when links cannot be read.
     }
@@ -769,6 +786,72 @@ export class GitHubStore implements PanelActions {
     for (const [key, target] of missing.entries()) cards[key] = this.cardFor(target.repo, target.number)
     if (Object.keys(cards).length === 0) return
     this.update({ linkCards: { ...this.snapshot.linkCards, ...cards } })
+  }
+
+  /** Update linked chips whose issues are present in the freshly loaded list. */
+  private syncLinkedCardsFromList(): void {
+    const items = this.snapshot.list?.items
+    if (items === undefined || items.length === 0) return
+    const byKey = new Map(items.map(item => [this.keyOf(item.repo, item.number), item]))
+    let changed = false
+    const next = { ...this.snapshot.linkCards }
+    for (const link of this.snapshot.links) {
+      const key = this.keyOf(link.repo, link.number)
+      const card = byKey.get(key)
+      if (card === undefined || next[key] === card) continue
+      next[key] = this.withSessionLinks(card)
+      changed = true
+    }
+    if (changed) this.update({ linkCards: next })
+  }
+
+  /** Add the recorded session links to one card. */
+  private withSessionLinks<T extends IssueCardVM>(card: T): T {
+    const records = this.snapshot.links.filter(link => link.repo === card.repo && link.number === card.number)
+    if (records.length === 0) return card
+    return {
+      ...card,
+      sessionLinks: records.map(record => ({ sessionId: record.sessionId, at: record.at })),
+    }
+  }
+
+  /**
+   * Refresh the dock chips from GitHub.
+   *
+   * A linked issue can be closed long after the handoff and no longer match the
+   * panel's filters, so its card is not in the list; without this the chip's state
+   * dot would stay green forever.
+   */
+  async refreshLinkedCards(): Promise<void> {
+    const links = this.snapshot.links
+    if (links.length === 0) return
+    const grouped = new Map<string, number[]>()
+    for (const link of links) {
+      const numbers = grouped.get(link.repo) ?? []
+      if (!numbers.includes(link.number)) numbers.push(link.number)
+      grouped.set(link.repo, numbers)
+    }
+    const groups: LinkedCardsRequest[] = [...grouped.entries()].map(([repo, numbers]) => ({ repo, numbers }))
+    try {
+      const remote = await this.api()
+      const cards = await remote.linkedCards(groups).then(result => unwrap(result))
+      if (cards.length === 0) return
+      const next = { ...this.snapshot.linkCards }
+      let changed = false
+      for (const card of cards) {
+        const key = this.keyOf(card.repo, card.number)
+        const current = next[key]
+        next[key] = this.withSessionLinks(card)
+        if (current === undefined || current.state !== card.state || current.stateReason !== card.stateReason || current.title !== card.title) {
+          changed = true
+        }
+      }
+      if (changed || Object.keys(this.snapshot.linkCards).length !== Object.keys(next).length) {
+        this.update({ linkCards: next })
+      }
+    } catch {
+      // A stale chip is better than an error banner in the composer.
+    }
   }
 
   /** Attach resolved session links to every card the snapshot currently holds. */

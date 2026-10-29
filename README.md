@@ -64,7 +64,7 @@ tarball (`dsh-plugin-github-issues.tgz`), installable by path.
 | GitHub panel | left rail icon → main panel | organization → repository → **milestone** → assignee → state cascade (remembered across restarts) in one fixed toolbar; a default organization/repository is selected for you, the milestone dropdown lists only that repository's milestones, and only the list scrolls (search stays above it, the detail pane scrolls independently with the **full issue body rendered as sanitized GitHub-flavored Markdown**, milestone progress, labels, priority, assignees, linked/mentioned PRs and checks) |
 | Issues right column | right sidebar tab | the same filtered issue list beside the Conversation, for drag-and-drop handoff |
 | Composer card | inside the input box | the staged issue: `[GitHub] owner/repo#number ×`. Type extra instructions or nothing; send converts the card into the issue prompt |
-| Linked chip | composer dock under the input | the Session's linked issue: state dot (green open / red closed) + `owner/repo#number`; click for a detail popover, remove to unlink |
+| Linked chip | composer dock under the input | the Session's linked issue: state dot (green open / red closed) + `owner/repo#number`; the dot refreshes from GitHub on panel refresh, every poll, window focus and whenever the issue appears in the list; click for a detail popover, remove to unlink |
 | Handoff actions | issue detail | one-click **enter Session** (latest link), **new Session for this issue**, plus a linked-Session list with per-Session enter/unlink |
 | GitHub settings | Settings → GitHub | `gh` auth status and scopes, handoff behavior, prompt template |
 

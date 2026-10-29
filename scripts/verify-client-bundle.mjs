@@ -217,6 +217,7 @@ assert.deepEqual(
     'githubIssues/orgRepos',
     'githubIssues/listIssues',
     'githubIssues/repoMilestones',
+    'githubIssues/linkedCards',
     'githubIssues/issueDetail',
     'githubIssues/issueMentionedPRs',
     'githubIssues/loadPrefs',

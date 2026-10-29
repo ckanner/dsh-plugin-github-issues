@@ -160,6 +160,12 @@ export interface IssueListPage {
   notice?: string
 }
 
+/** One repository's linked issue numbers, for the dock's card refresh. */
+export interface LinkedCardsRequest {
+  repo: string
+  numbers: number[]
+}
+
 /** The list views the panel offers. */
 export type ListView = 'assigned' | 'created' | 'open' | 'repo' | 'project'
 

@@ -91,6 +91,42 @@ const ISSUE_CARD_FRAGMENT = `fragment IssueCardFields on Issue {
   }
 }`
 
+/**
+ * The lighter card fragmment used to refresh the composer dock's linked chips.
+ *
+ * It carries everything the chip and its popover show except the body, which a
+ * chained issue does not need.
+ */
+const LINKED_ISSUE_CARD_FRAGMENT = `fragment LinkedIssueCardFields on Issue {
+  id
+  number
+  title
+  url
+  state
+  stateReason
+  createdAt
+  updatedAt
+  issueType { name color }
+  repository { nameWithOwner isPrivate }
+  labels(first: 10) { nodes { name color } }
+  milestone { title dueOn state progressPercentage }
+  assignees(first: 5) { nodes { login avatarUrl(size: 32) } }
+  comments { totalCount }
+  closedByPullRequestsReferences(first: 5) {
+    nodes { ...LinkedPRFields }
+  }
+  issueFieldValues(first: 10) {
+    nodes {
+      __typename
+      ... on IssueFieldSingleSelectValue {
+        name
+        color
+        field { ... on IssueFieldSingleSelect { name } }
+      }
+    }
+  }
+}`
+
 /** The trailing fragment definitions every document that uses them appends. */
 const FRAGMENTS = `${LINKED_PR_FRAGMENT}\n${ISSUE_CARD_FRAGMENT}`
 
@@ -341,6 +377,33 @@ ${FRAGMENTS}`,
       after: input.after,
       ...variables,
     },
+  }
+}
+
+/**
+ * The current cards for a handful of linked issues in one repository.
+ *
+ * The composer dock keeps a link after the issue stops matching the panel's
+ * filters, so it needs a way to refresh the chip's state (and popover data) from
+ * GitHub without fetching bodies. Aliased `issue(number:)` fields keep this one
+ * request per repository.
+ * @param owner - repository owner.
+ * @param name - repository name.
+ * @param numbers - issue numbers (validated positive integers by the caller).
+ * @returns the operation and its variables.
+ */
+export function buildLinkedCardsQuery(owner: string, name: string, numbers: readonly number[]): GitHubGraphQLRequest {
+  const aliases = numbers.map((number, index) => `  i${String(index)}: issue(number: ${String(number)}) { ...LinkedIssueCardFields }`).join('\n')
+  return {
+    query: `query LinkedIssueCards($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+${aliases}
+  }
+  rateLimit { cost remaining }
+}
+${LINKED_PR_FRAGMENT}
+${LINKED_ISSUE_CARD_FRAGMENT}`,
+    variables: { owner, name },
   }
 }
 

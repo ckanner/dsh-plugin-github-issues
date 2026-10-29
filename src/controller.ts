@@ -20,7 +20,7 @@ import { normalizeRequest } from './github/list-request.ts'
 import type { PrefsStore } from './github/state.ts'
 import type {
   GitHubStatus, IssueBodyVM, IssueCardVM, IssueDetailVM, IssueLinkRecord, IssueListPage,
-  LinkedPRVM, Prefs,
+  LinkedCardsRequest, LinkedPRVM, Prefs,
   ProjectRefVM, RepoMilestoneVM, RepoPageVM, ScopeCatalog,
 } from './vm.ts'
 
@@ -39,6 +39,27 @@ export interface ControllerOptions {
   prefs: PrefsStore
   /** Deployment configuration as the loader resolved it. */
   config: { authMode: string; host: string; ghPath: string; handoffMode: string; pollSeconds: number }
+}
+
+/**
+ * Validate the dock's linked-card refresh input from the wire.
+ * @param input - untrusted Remote argument.
+ * @returns at most 20 repositories with up to 50 positive numbers each.
+ */
+function normalizeLinkedCards(input: unknown): LinkedCardsRequest[] {
+  if (!Array.isArray(input)) return []
+  const groups: LinkedCardsRequest[] = []
+  for (const entry of input.slice(0, 20)) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const raw = entry as Record<string, unknown>
+    const repo = typeof raw.repo === 'string' && raw.repo.includes('/') ? raw.repo : undefined
+    const numbers = Array.isArray(raw.numbers)
+      ? raw.numbers.filter((number): number is number => typeof number === 'number' && Number.isInteger(number) && number > 0).slice(0, 50)
+      : []
+    if (repo === undefined || numbers.length === 0) continue
+    groups.push({ repo, numbers })
+  }
+  return groups
 }
 
 /** Remote owner of the GitHub Issues surface, namespace `githubIssues`. */
@@ -170,6 +191,16 @@ export class GitHubIssuesController extends TypertRemoteService {
   @Remote
   async issueDetail(repo: string, number: number): Promise<IssueBodyVM> {
     return this.withApi(api => api.issueDetail(repo, number))
+  }
+
+  /**
+   * Refresh the dock's linked-issue chips.
+   * @param groups - repositories and issue numbers from recorded links.
+   * @returns current cards for issues that still exist.
+   */
+  @Remote
+  async linkedCards(groups: unknown): Promise<IssueCardVM[]> {
+    return this.withApi(api => api.linkedCards(normalizeLinkedCards(groups)))
   }
 
   /** One repository's milestones, for the picker and its list filter. */

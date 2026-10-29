@@ -258,4 +258,20 @@ if (!linked.includes('one2x-ai/mesh#2469')) {
   throw new Error('the linked chip must show the organization/repository and number')
 }
 console.log('ok chip label (organization/repository#number)')
+const closedChip = renderToString(
+  <GitHubDock
+    t={t}
+    chips={[{
+      card: { ...card(2530), state: 'CLOSED', stateReason: 'COMPLETED' },
+      state: 'linked',
+      sessions: [resolveSession('session-1')],
+    }]}
+    onRemoveChip={() => {}}
+    onOpenChip={() => {}}
+  />,
+)
+if (!closedChip.includes('state-error-primary')) {
+  throw new Error('a closed linked issue must render the red state dot')
+}
+console.log('ok closed chip dot (red)')
 console.log('render smoke passed')

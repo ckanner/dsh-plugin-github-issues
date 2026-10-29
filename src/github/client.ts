@@ -22,13 +22,13 @@
  */
 
 import type {
-  IssueBodyVM, IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, LinkedPRVM, ListView, OrgRefVM,
-  ProjectRefVM, RepoMilestoneVM, RepoPageVM, RepoRefVM, ScopeCatalog,
+  IssueBodyVM, IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, LinkedCardsRequest,
+  LinkedPRVM, ListView, OrgRefVM, ProjectRefVM, RepoMilestoneVM, RepoPageVM, RepoRefVM, ScopeCatalog,
 } from '../vm.ts'
 import {
-  buildIssueDetailQuery, buildMentionedPRsQuery, buildOrgProjectsQuery, buildOrgReposQuery,
-  buildProjectItemsQuery, buildRepoIssuesQuery, buildRepoMilestonesQuery, buildScopeQuery,
-  buildSearchIssuesQuery, projectItemsFilterFor, searchStringForFilters, statesForView,
+  buildIssueDetailQuery, buildLinkedCardsQuery, buildMentionedPRsQuery, buildOrgProjectsQuery,
+  buildOrgReposQuery, buildProjectItemsQuery, buildRepoIssuesQuery, buildRepoMilestonesQuery,
+  buildScopeQuery, buildSearchIssuesQuery, projectItemsFilterFor, searchStringForFilters, statesForView,
 } from './queries.ts'
 import type { GitHubGraphQLRequest } from './queries.ts'
 import { GitHubApiError, splitRepo } from './types.ts'
@@ -227,6 +227,11 @@ interface RawDetailData {
 /** The cross-reference timeline response. */
 interface RawMentionedPRsData {
   repository?: { issue?: { timelineItems?: { nodes?: (RawTimelineItem | null)[] | null } | null } | null } | null
+}
+
+/** The linked-issue-cards response: one aliased issue per number. */
+interface RawLinkedCardsData {
+  repository?: Record<string, RawIssue | null> | null
 }
 
 /** The repository-milestones response. */
@@ -701,6 +706,41 @@ class GitHubApiClient implements GitHubApi {
     const result = { mentionedPRs: toMentionedPRsVM(data.repository?.issue?.timelineItems?.nodes) }
     this.mentionedCache.set(key, { at: Date.now(), data: result })
     return result
+  }
+
+  /**
+   * Refresh the composer dock's linked-issue chips.
+   *
+   * One request per repository; the caller passes only the numbers it links.
+   * @param groups - repositories and their issue numbers.
+   * @returns the current cards for the issues that still exist.
+   */
+  async linkedCards(groups: readonly LinkedCardsRequest[]): Promise<IssueCardVM[]> {
+    const cards: IssueCardVM[] = []
+    const seen = new Set<string>()
+    for (const group of groups) {
+      const { owner, name } = splitRepo(group.repo)
+      const numbers = [...new Set(group.numbers)]
+        .filter(number => Number.isInteger(number) && number > 0)
+        .slice(0, 50)
+      if (numbers.length === 0) continue
+      try {
+        const data = this.unwrap<RawLinkedCardsData>(await this.request(buildLinkedCardsQuery(owner, name, numbers)))
+        for (const node of Object.values(data.repository ?? {})) {
+          if (node === null || node === undefined) continue
+          const card = toIssueCardVM(node)
+          const key = `${card.repo}#${String(card.number)}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          cards.push(card)
+        }
+      } catch (error) {
+        // One inaccessible repository should not blank the other linked chips.
+        if (error instanceof GitHubApiError && error.code === 'not_found') continue
+        throw error
+      }
+    }
+    return cards
   }
 
   /** A repository's milestones, for the picker and its list filter. */

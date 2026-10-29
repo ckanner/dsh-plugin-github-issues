@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.1 (2026-10-29)
+
+- The composer dock's linked-issue chip now refreshes its card from GitHub: a new
+  `linkedCards` Remote method batches aliased `issue(number:)` lookups for the
+  linked numbers (body excluded), and the store refreshes the chips when links are
+  loaded, when the panel polls, when the window regains focus, and whenever the
+  issue appears in the loaded list. Closing an issue (or a stale placeholder for a
+  link restored after restart) now turns the dot red instead of leaving it green.
+- Added a render-smoke assertion that a closed linked issue renders the red dot.
+
 ## 0.7.0 (2026-10-29)
 
 - Fixed the milestone filter never reaching GitHub: the Host's Remote wire

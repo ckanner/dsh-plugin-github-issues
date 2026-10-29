@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildRepoIssuesQuery, searchStringForFilters } from '../src/github/queries.ts'
+import { buildLinkedCardsQuery, buildRepoIssuesQuery, searchStringForFilters } from '../src/github/queries.ts'
 
 test('the cascade search gains a quoted milestone qualifier', () => {
   const search = searchStringForFilters({
@@ -38,6 +38,15 @@ test('the repo issues connection carries assignee and milestone filters', () => 
   assert.ok(filtered.query.includes('filterBy: { assignee: $assignee, milestoneNumber: $milestone }'))
   assert.equal(filtered.variables.assignee, 'ckanner')
   assert.equal(filtered.variables.milestone, 'v2.1')
+})
+
+test('the linked-card refresh aliases each issue and skips the body fragment', () => {
+  const query = buildLinkedCardsQuery('one2x-ai', 'mesh', [2469, 2530])
+  assert.ok(query.query.includes('i0: issue(number: 2469)'))
+  assert.ok(query.query.includes('i1: issue(number: 2530)'))
+  assert.ok(query.query.includes('fragment LinkedIssueCardFields'))
+  assert.ok(!query.query.includes('body\n'))
+  assert.deepEqual(query.variables, { owner: 'one2x-ai', name: 'mesh' })
 })
 
 test('a milestone-only repo page does not declare an unused assignee variable', () => {

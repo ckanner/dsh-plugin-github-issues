@@ -10,7 +10,7 @@
 
 import type {
   IssueBodyVM,
-  RepoMilestoneVM, IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, LinkedPRVM,
+  LinkedCardsRequest, RepoMilestoneVM, IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, LinkedPRVM,
   OrgRefVM, ProjectRefVM, RepoPageVM, ScopeCatalog,
 } from '../vm.ts'
 
@@ -75,6 +75,8 @@ export interface GitHubApi {
   listIssues(request: IssueListRequest, signal?: AbortSignal): Promise<IssueListPage>
   /** One repository's milestones, for the picker and its list filter. */
   repoMilestones(repo: string, signal?: AbortSignal): Promise<{ milestones: RepoMilestoneVM[] }>
+  /** Current cards for linked issues, refreshed for the composer dock. */
+  linkedCards(groups: readonly LinkedCardsRequest[]): Promise<IssueCardVM[]>
   /** One issue with its body and linked pull requests (no timeline). */
   issueDetail(repo: string, number: number, signal?: AbortSignal): Promise<IssueBodyVM>
   /** The issue's cross-referenced pull requests; the lazy slow leg of the detail. */
