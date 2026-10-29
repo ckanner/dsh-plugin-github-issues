@@ -218,6 +218,12 @@ export class GitHubIssuesController extends TypertRemoteService {
     return this.withApi(api => api.issueDetail(repo, number))
   }
 
+  /** One repository's milestone titles, for the milestone picker. */
+  @Remote
+  async repoMilestones(repo: string): Promise<{ milestones: string[] }> {
+    return this.withApi(api => api.repoMilestones(repo))
+  }
+
   /** The issue's cross-referenced pull requests; fetched after the detail shows. */
   @Remote
   async issueMentionedPRs(repo: string, number: number): Promise<{ mentionedPRs: LinkedPRVM[] }> {

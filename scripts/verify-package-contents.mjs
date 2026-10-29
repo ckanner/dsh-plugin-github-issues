@@ -54,6 +54,7 @@ const required = [
   'locale/zh.json',
   'icon.svg',
   'docs/README.zh.md',
+  'assets/panel.png',
   'README.md',
   'LICENSE',
   'package.json',

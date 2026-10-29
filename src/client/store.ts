@@ -50,6 +50,7 @@ interface RemoteApi {
   orgProjects(org: string): Promise<RemoteResult<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }>>
   orgRepos(org: string): Promise<RemoteResult<RepoPageVM>>
   listIssues(request: IssueListRequest): Promise<RemoteResult<IssueListPage>>
+  repoMilestones(repo: string): Promise<RemoteResult<{ milestones: string[] }>>
   issueDetail(repo: string, number: number): Promise<RemoteResult<IssueBodyVM>>
   issueMentionedPRs(repo: string, number: number): Promise<RemoteResult<{ mentionedPRs: IssueDetailVM['mentionedPRs'] }>>
   loadPrefs(): Promise<RemoteResult<Prefs>>
@@ -98,6 +99,7 @@ export class GitHubStore implements PanelActions {
     detailLoading: false,
     prefs: DEFAULT_PREFS,
     projectsBlocked: false,
+    milestoneOptions: [],
     links: [],
     linkCards: {},
   }
@@ -159,16 +161,24 @@ export class GitHubStore implements PanelActions {
       // A project belongs to an organization. Older state files (or a previous
       // session before the cascade shipped) may carry a project id without one;
       // honoring it would scope the list to a board the picker never shows.
-      const sanePrefs = prefs.projectId !== undefined && prefs.org === undefined
+      let sanePrefs = prefs.projectId !== undefined && prefs.org === undefined
         ? { ...prefs, projectId: undefined, repo: prefs.repo }
         : prefs
+      // Projects v2 has no milestone qualifier; a stale milestone on a board is dropped.
+      if (sanePrefs.projectId !== undefined && sanePrefs.milestone !== undefined) {
+        sanePrefs = { ...sanePrefs, milestone: undefined }
+        void this.savePrefs({ milestone: null })
+      }
       this.update({
         status,
         prefs: sanePrefs,
         projectsBlocked: status.missingProjectScope,
         loading: false,
       })
-      if (sanePrefs !== prefs) void this.savePrefs({ projectId: null })
+      if (sanePrefs.projectId === undefined && prefs.projectId !== undefined) {
+        void this.savePrefs({ projectId: null })
+      }
+      if (sanePrefs.repo !== undefined) void this.loadRepoMilestones(sanePrefs.repo)
       void this.loadCatalog()
       void this.loadLinks()
       if (prefs.org !== undefined) void this.loadOrgScope(prefs.org)
@@ -225,6 +235,7 @@ export class GitHubStore implements PanelActions {
     if (prefs.org !== undefined) request.org = prefs.org
     if (prefs.org !== undefined && prefs.projectId !== undefined) request.projectId = prefs.projectId
     if (prefs.repo !== undefined) request.repos = [prefs.repo]
+    if (prefs.projectId === undefined && prefs.milestone !== undefined) request.milestone = prefs.milestone
     return request
   }
 
@@ -242,6 +253,7 @@ export class GitHubStore implements PanelActions {
         loadingMore: false,
         error: undefined,
       })
+      this.rememberMilestones(page.items)
       this.refreshPinnedCard()
     } catch (error) {
       if (seq !== this.listSeq) return
@@ -383,6 +395,7 @@ export class GitHubStore implements PanelActions {
       try {
         const remote = await this.api()
         const next = await remote.listIssues(this.request(page.pageInfo.endCursor)).then(result => unwrap(result))
+        this.rememberMilestones(next.items)
         this.update({
           loadingMore: false,
           list: {
@@ -399,20 +412,79 @@ export class GitHubStore implements PanelActions {
   }
 
   setOrg(org: string | undefined): void {
-    // A new organization invalidates the project and repository selected inside
-    // the previous one. `null` (not undefined) is what clears over the wire.
-    void this.savePrefs({ org: org ?? null, projectId: null, repo: null }, async saved => {
+    this.resetMilestoneOptions()
+    // A new organization invalidates the project, repository and milestone
+    // selected inside the previous one. `null` clears over the wire.
+    void this.savePrefs({ org: org ?? null, projectId: null, repo: null, milestone: null }, async saved => {
       this.update({ orgProjects: undefined, orgRepos: undefined })
       if (saved.org !== undefined) await this.loadOrgScope(saved.org)
     })
   }
 
   setProject(projectId: string | undefined): void {
-    void this.savePrefs({ projectId: projectId ?? null })
+    // Projects v2 item filters have no milestone equivalent, so a board selection
+    // drops the milestone instead of silently ignoring it.
+    if (projectId !== undefined) this.resetMilestoneOptions()
+    void this.savePrefs({
+      projectId: projectId ?? null,
+      ...projectId === undefined ? {} : { milestone: null },
+    })
   }
 
   setRepo(repo: string | undefined): void {
-    void this.savePrefs({ repo: repo ?? null })
+    // A milestone belongs to a repository, so a repository change clears it.
+    this.resetMilestoneOptions()
+    void this.savePrefs({ repo: repo ?? null, milestone: null }, async saved => {
+      if (saved.repo !== undefined) await this.loadRepoMilestones(saved.repo)
+    })
+  }
+
+  setMilestone(milestone: string | undefined): void {
+    void this.savePrefs({ milestone: milestone ?? null })
+  }
+
+  /** Clear the milestone picker's options for a new scope. */
+  private resetMilestoneOptions(): void {
+    if (this.snapshot.milestoneOptions.length !== 0) this.update({ milestoneOptions: [] })
+  }
+
+  /** Merge milestones seen in one list page into the picker's options. */
+  private rememberMilestones(items: readonly IssueCardVM[]): void {
+    const options = [...this.snapshot.milestoneOptions]
+    const seen = new Set(options)
+    const selected = this.snapshot.prefs.milestone
+    let changed = false
+    for (const card of items) {
+      const title = card.milestone?.title
+      if (title === undefined || title === '' || seen.has(title)) continue
+      seen.add(title)
+      options.push(title)
+      changed = true
+    }
+    if (selected !== undefined && !seen.has(selected)) {
+      options.unshift(selected)
+      changed = true
+    }
+    if (changed) this.update({ milestoneOptions: options })
+  }
+
+  /** Seed the picker from the selected repository's full milestone list. */
+  private async loadRepoMilestones(repo: string): Promise<void> {
+    try {
+      const remote = await this.api()
+      const result = await remote.repoMilestones(repo).then(response => unwrap(response))
+      if (this.snapshot.prefs.repo !== repo) return
+      const options = [...this.snapshot.milestoneOptions]
+      const seen = new Set(options)
+      for (const title of result.milestones) {
+        if (title === '' || seen.has(title)) continue
+        seen.add(title)
+        options.push(title)
+      }
+      this.update({ milestoneOptions: options })
+    } catch {
+      // A missing milestone list only narrows the picker's suggestions.
+    }
   }
 
   setAssignee(assignee: string): void {
@@ -460,7 +532,7 @@ export class GitHubStore implements PanelActions {
     try {
       const remote = await this.api()
       const saved = await remote.savePrefs(patch).then(result => unwrap(result))
-      const affectsList = ['org', 'projectId', 'repo', 'assignee', 'state'].some(key => key in patch)
+      const affectsList = ['org', 'projectId', 'repo', 'assignee', 'state', 'milestone'].some(key => key in patch)
       this.update({ prefs: saved })
       if (affectsList) {
         await this.reloadList()

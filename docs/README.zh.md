@@ -11,6 +11,8 @@ Workspace 里新开一个 Session，并在输入框内以"附件卡片"的形式
 转成 Issue 的提示词。已交办的 Issue 会显示处理它的 Session，可以进入，也可以解除关联；同一个
 Issue 可以关联多个 Session。
 
+![GitHub 面板：固定筛选栏 + 独立滚动的详情栏](../assets/panel.png)
+
 插件对 GitHub **只读**，不会写入任何内容。
 
 ## 安装
@@ -60,7 +62,7 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 
 | 界面 | 位置 | 内容 |
 |---|---|---|
-| GitHub 面板 | 左侧栏图标 → 主面板 | 组织 → 项目/仓库 → assignee → 状态 级联筛选（记住上次选择）、搜索、列表、详情（正文、Milestone 进度、标签、优先级、assignee、关联/提及 PR 的 checks 与 review） |
+| GitHub 面板 | 左侧栏图标 → 主面板 | 组织 → 项目/仓库 → **里程碑** → assignee → 状态 级联筛选（记住上次选择）固定在一行；只有列表滚动，搜索在列表上方固定；详情栏独立滚动（正文、Milestone 进度、标签、优先级、assignee、关联/提及 PR 的 checks 与 review） |
 | Issues 右栏 | 右侧栏页签 | 与对话同屏的同一份筛选列表，用于拖拽交办 |
 | 输入框卡片 | 输入框内部 | 暂存的 Issue：`[GitHub] owner/repo#number ×`。可以补充自己的文字，也可以不写；发送时卡片转成提示词 |
 | 已关联 chip | 输入框下方 dock | 当前 Session 关联的 Issue：状态圆点（open 绿 / closed 红）+ `owner/repo#number`；点击看详情，× 解除关联 |
@@ -70,8 +72,8 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 ## 使用
 
 1. 点击左侧栏 **GitHub** 图标。
-2. 选择组织、Projects v2 板或仓库，再选 assignee/状态。选择会记在 profile 的 UI 状态里（不在插件
-   配置中）。
+2. 选择组织、Projects v2 板或仓库，再选里程碑（仓库范围时）和 assignee/状态。选择会记在 profile
+   的 UI 状态里（不在插件配置中）。
 3. 点一行查看详情；点 `owner/repo#number` 在浏览器打开 GitHub。
 4. 交办：
    - 详情里点「交给 Agent」/「再开一个 Session」：在匹配的 Workspace 新开 Session，输入框内出现
@@ -105,6 +107,8 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 
 - 只读：不发评论、不改标签/指派/状态。
 - Projects v2 需要 `read:project`；优先级回退顺序：项目字段 → 组织 Issue Field → `P0`–`P4` 标签。
+  Projects v2 的条目筛选没有里程碑等价物，因此选中项目板时里程碑筛选会禁用。
+- 里程碑的可选项：选中仓库时取该仓库的完整里程碑列表；全部仓库范围时从已加载的 Issue 中累积。
 - 列表可见时每 60–120 秒轮询一次；需要立刻更新点「刷新」。
 - 详情先请求正文，交叉引用 PR 懒加载，慢的 timeline 不阻塞面板。
 - "发送时卡片转提示词"依赖 composer 的 DOM（原生发送按钮 / 回车），DSH 升级后需要重新核对。

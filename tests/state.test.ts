@@ -36,6 +36,15 @@ test('known patches are applied', () => {
   assert.equal(next.org, 'one2x-ai')
 })
 
+test('a milestone title is validated, bounded, and clearable', () => {
+  const selected = applyPrefsPatch(DEFAULT_PREFS, { milestone: '  v2.1  ' })
+  assert.equal(selected.milestone, 'v2.1')
+  const cleared = applyPrefsPatch(selected, { milestone: null })
+  assert.equal(cleared.milestone, undefined)
+  const bounded = applyPrefsPatch(DEFAULT_PREFS, { milestone: 'x'.repeat(500) })
+  assert.equal(bounded.milestone?.length, 200)
+})
+
 test('null clears a selection (the wire form of "no value")', () => {
   const scoped = applyPrefsPatch(DEFAULT_PREFS, { org: 'one2x-ai', projectId: 'PVT_1', repo: 'one2x-ai/mesh' })
   assert.equal(scoped.org, 'one2x-ai')

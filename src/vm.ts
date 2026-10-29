@@ -177,6 +177,8 @@ export interface IssueListRequest {
   assignee?: string
   /** Author qualifier (legacy "created by me"). */
   author?: string
+  /** Milestone title qualifier (`milestone:"..."` in search). */
+  milestone?: string
   /** Open/closed/all filter. */
   state?: 'open' | 'closed' | 'all'
   first?: number
@@ -258,6 +260,8 @@ export interface Prefs {
   projectId?: string | undefined
   /** Selected repository `owner/name` (filter within the org or the project). */
   repo?: string | undefined
+  /** Selected milestone title (search `milestone:` qualifier). */
+  milestone?: string | undefined
   /** Assignee filter: `@me`, `all`, or a GitHub login. */
   assignee: string
   /** Issue state filter. */
@@ -294,6 +298,7 @@ export const DEFAULT_PREFS: Prefs = {
   org: undefined,
   projectId: undefined,
   repo: undefined,
+  milestone: undefined,
   assignee: '@me',
   state: 'open',
   handoffMode: 'draft',

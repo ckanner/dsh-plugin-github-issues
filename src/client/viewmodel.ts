@@ -31,6 +31,8 @@ export interface PanelSnapshot {
   orgProjects?: ProjectRefVM[] | undefined
   /** The selected organization's repositories, loaded on demand. */
   orgRepos?: RepoPageVM | undefined
+  /** Milestone titles seen for the current scope, for the milestone picker. */
+  milestoneOptions: string[]
   list?: IssueListPage | undefined
   loading: boolean
   loadingMore: boolean
@@ -98,6 +100,8 @@ export interface PanelActions {
   setProject(projectId: string | undefined): void
   /** Select one repository inside the organization (or the viewer's repos). */
   setRepo(repo: string | undefined): void
+  /** Select one milestone title inside the current scope. */
+  setMilestone(milestone: string | undefined): void
   /** Choose who the list is assigned to: `@me`, `all`, or a login. */
   setAssignee(assignee: string): void
   /** Change the open/closed filter. */

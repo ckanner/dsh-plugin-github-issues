@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0 (2026-10-29)
+
+- The panel's cascade toolbar is now a fixed strip: the page title, the six-field
+  filter row (organization / project / repository / milestone / assignee / state)
+  and the search stay in place while only the issue list scrolls. The detail pane
+  is a second, independently scrollable column.
+- The six filters are one weighted grid row at normal widths (the repository and
+  milestone fields are wider); narrow windows fall back to wrapping.
+- New milestone filter: a dropdown populated from the selected repository's
+  milestone list (or accumulated from loaded issues in an all-repositories scope).
+  It is persisted with the other filters and sent as a `milestone:"..."` search
+  qualifier (or the repo-issues `filterBy.milestone` filter). Projects v2 boards
+  have no milestone filter, so the control is disabled there.
+- A headless render check of the panel layout keeps the toolbar fixed and verifies
+  that list and detail scroll separately (development aid, not shipped).
+
 ## 0.4.7 (2026-10-28)
 
 First public release. Earlier numbered entries were development snapshots before the package was published.

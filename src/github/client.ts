@@ -27,9 +27,8 @@ import type {
 } from '../vm.ts'
 import {
   buildIssueDetailQuery, buildMentionedPRsQuery, buildOrgProjectsQuery, buildOrgReposQuery,
-  buildProjectItemsQuery,
-  buildRepoIssuesQuery, buildScopeQuery, buildSearchIssuesQuery, projectItemsFilterFor,
-  searchStringForFilters, statesForView,
+  buildProjectItemsQuery, buildRepoIssuesQuery, buildRepoMilestonesQuery, buildScopeQuery,
+  buildSearchIssuesQuery, projectItemsFilterFor, searchStringForFilters, statesForView,
 } from './queries.ts'
 import type { GitHubGraphQLRequest } from './queries.ts'
 import { GitHubApiError, splitRepo } from './types.ts'
@@ -51,6 +50,9 @@ const LIST_TTL_MS = 60 * 1_000
 
 /** How long one issue detail is reused. */
 const DETAIL_TTL_MS = 30 * 1_000
+
+/** How long a repository's milestone titles stay cached. */
+const MILESTONES_TTL_MS = 5 * 60 * 1_000
 
 /** The list page size used when a caller does not supply one. */
 const DEFAULT_PAGE_SIZE = 30
@@ -117,6 +119,7 @@ interface NormalizedListRequest {
   after: string | null
   projectId?: string
   org?: string
+  milestone?: string
 }
 
 /** One page of GraphQL pagination. */
@@ -223,6 +226,13 @@ interface RawDetailData {
 /** The cross-reference timeline response. */
 interface RawMentionedPRsData {
   repository?: { issue?: { timelineItems?: { nodes?: (RawTimelineItem | null)[] | null } | null } | null } | null
+}
+
+/** The repository-milestones response. */
+interface RawRepoMilestonesData {
+  repository?: {
+    milestones?: { nodes?: ({ title?: string | null } | null)[] | null } | null
+  } | null
 }
 
 /** The project-items response. */
@@ -416,6 +426,9 @@ function normalizeListRequest(request: IssueListRequest): NormalizedListRequest 
     ? Math.min(Math.max(Math.trunc(request.first), 1), 50)
     : DEFAULT_PAGE_SIZE
   const after = typeof request.after === 'string' && request.after !== '' ? request.after : null
+  const milestone = typeof request.milestone === 'string' && request.milestone.trim() !== ''
+    ? request.milestone.trim().slice(0, 200)
+    : undefined
   const state = request.state === 'closed' || request.state === 'all' ? request.state : 'open'
   const projectId = typeof request.projectId === 'string' && request.projectId !== '' ? request.projectId : undefined
   const org = typeof request.org === 'string' && request.org !== '' ? request.org : undefined
@@ -436,6 +449,7 @@ function normalizeListRequest(request: IssueListRequest): NormalizedListRequest 
     ...author === undefined ? {} : { author },
     ...projectId === undefined ? {} : { projectId },
     ...org === undefined ? {} : { org },
+    ...milestone === undefined ? {} : { milestone },
   }
 }
 
@@ -546,6 +560,7 @@ class GitHubApiClient implements GitHubApi {
   private readonly listCache = new Map<string, Timed<IssueListPage>>()
   private readonly detailCache = new Map<string, Timed<IssueBodyVM>>()
   private readonly mentionedCache = new Map<string, Timed<{ mentionedPRs: LinkedPRVM[] }>>()
+  private readonly milestonesCache = new Map<string, Timed<{ milestones: string[] }>>()
   private readonly orgReposCache = new Map<string, Timed<RepoPageVM>>()
   private readonly orgProjectsCache = new Map<string, Timed<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }>>()
 
@@ -683,6 +698,28 @@ class GitHubApiClient implements GitHubApi {
     return result
   }
 
+  /** A repository's milestone titles, for the milestone picker. */
+  async repoMilestones(repo: string, signal?: AbortSignal): Promise<{ milestones: string[] }> {
+    const { owner, name } = splitRepo(repo)
+    const cached = this.milestonesCache.get(repo)
+    if (cached !== undefined && Date.now() - cached.at < MILESTONES_TTL_MS) return cached.data
+    const data = this.unwrap<RawRepoMilestonesData>(await this.request(
+      buildRepoMilestonesQuery(owner, name),
+      signal,
+    ))
+    const seen = new Set<string>()
+    const milestones: string[] = []
+    for (const node of data.repository?.milestones?.nodes ?? []) {
+      const title = typeof node?.title === 'string' ? node.title : ''
+      if (title === '' || seen.has(title)) continue
+      seen.add(title)
+      milestones.push(title)
+    }
+    const result = { milestones }
+    this.milestonesCache.set(repo, { at: Date.now(), data: result })
+    return result
+  }
+
   /** Drop cached responses; `all` (or no argument) also drops the scope catalog. */
   invalidate(scope?: 'list' | 'detail' | 'all'): void {
     if (scope === 'list') {
@@ -692,6 +729,7 @@ class GitHubApiClient implements GitHubApi {
     if (scope === 'detail') {
       this.detailCache.clear()
       this.mentionedCache.clear()
+      this.milestonesCache.clear()
       return
     }
     this.scopesCache = undefined
@@ -702,6 +740,7 @@ class GitHubApiClient implements GitHubApi {
     this.listCache.clear()
     this.detailCache.clear()
     this.mentionedCache.clear()
+    this.milestonesCache.clear()
   }
 
   /** Build the catalog: viewer, organizations (GraphQL + REST union), and repositories. */
@@ -820,6 +859,7 @@ class GitHubApiClient implements GitHubApi {
         states: statesForView(request.state),
         first: request.first,
         after: request.after,
+        ...request.milestone === undefined ? {} : { milestone: request.milestone },
       }),
       signal,
     ))

@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-github-issues",
-  "version": "0.4.7",
+  "version": "0.5.0",
   "description": "Browse GitHub issues, milestones, labels, priority, and linked PR status inside DeepSeek Harness, and hand an issue to the agent by dragging it into the composer.",
   "keywords": [
     "dsh-plugin",
@@ -10,7 +10,8 @@
     "github",
     "issues",
     "milestones",
-    "projects"
+    "projects",
+    "milestone"
   ],
   "license": "MIT",
   "author": {
@@ -45,7 +46,8 @@
     "cordis.patch.yml",
     "locale",
     "icon.svg",
-    "docs/README.zh.md"
+    "docs/README.zh.md",
+    "assets"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

@@ -73,6 +73,25 @@ export const PAGE_SUBTITLE_STYLE: CSSProperties = {
 export const PAGE_CSS = `
 .ghp-page{box-sizing:border-box;height:100%;overflow:auto;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font-size:var(--dsh-content-font-size,14px)}
 .ghp-content{box-sizing:border-box;width:100%;max-width:960px;margin:0 auto;padding:0 clamp(24px,4vw,48px) 48px}
+/* The panel keeps its header, cascade and search fixed; only the list and the
+   detail pane scroll. The settings page keeps the scrolling page shell above. */
+.ghp-panel{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.ghp-panel .ghp-content{display:flex;flex-direction:column;flex:1;min-height:0;height:auto;padding-bottom:0}
+.ghp-panel .ghp-head,.ghp-panel .ghp-scope,.ghp-panel .ghp-notice,.ghp-panel .ghp-filters{flex:none}
+.ghp-panel .ghp-body{display:flex;flex:1;min-height:0;margin-top:0}
+.ghp-panel .ghp-split{flex:1;min-height:0;width:100%;align-items:stretch}
+.ghp-panel .ghp-list-pane{flex:1;min-width:0;overflow:auto;overscroll-behavior:contain;padding-bottom:32px}
+.ghp-panel .ghx-pane{flex:0 0 380px;box-sizing:border-box;width:380px;max-height:100%;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:32px}
+.ghp-panel .ghp-scope{grid-template-columns:minmax(0,.95fr) minmax(0,.95fr) minmax(0,1.3fr) minmax(0,1.3fr) minmax(0,.95fr) minmax(0,.75fr);gap:10px;margin-top:14px}
+@media (max-width:860px){.ghp-panel .ghp-scope{grid-template-columns:repeat(auto-fit,minmax(124px,1fr))}}
+.ghp-panel .ghp-filters{margin:12px 0 6px}
+@media (max-width:760px){
+  .ghp-panel{overflow:auto}
+  .ghp-panel .ghp-content{display:block;height:auto;min-height:100%}
+  .ghp-panel .ghp-body{display:block}
+  .ghp-panel .ghp-list-pane{overflow:visible}
+  .ghp-panel .ghx-pane{width:100%;max-height:none;overflow:visible}
+}
 .ghp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
 .ghp-title-block{min-width:0}
 .ghp-h1{margin:0;font-size:20px;line-height:28px;font-weight:500;color:var(--dsw-alias-label-primary)}
@@ -239,6 +258,14 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
     { value: '@me', label: t('panel.assignee.me') },
     { value: 'all', label: t('panel.assignee.all') },
   ]
+  const milestoneTitles = [
+    ...prefs.milestone === undefined ? [] : [prefs.milestone],
+    ...(snapshot.milestoneOptions ?? []),
+  ].filter((title, index, all) => title !== '' && all.indexOf(title) === index)
+  const milestoneOptions = [
+    { value: '', label: t('panel.allMilestones') },
+    ...milestoneTitles.map(title => ({ value: title, label: title })),
+  ]
 
   const totalCount = snapshot.list?.totalCount
   // The detail pane owns the error while a selected issue's detail is still pending.
@@ -257,9 +284,9 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
       : `${prefs.org}${prefs.projectId === undefined ? '' : ` · ${t('panel.project')}`}${prefs.repo === undefined ? '' : ` · ${prefs.repo}`}`
 
   return (
-    <section className="ghp-page" style={PAGE_ROOT_STYLE} data-github-panel aria-label={t('panel')}>
+    <section className="ghp-page ghp-panel" data-github-panel aria-label={t('panel')}>
       <StyleSheet chunks={[CONTROLS_CSS, PAGE_CSS, ISSUE_ROW_CSS, ISSUE_DETAIL_CSS]} />
-      <div className="ghp-content" style={PAGE_CONTENT_STYLE}>
+      <div className="ghp-content">
         <header className="ghp-head" style={PAGE_HEAD_STYLE} data-window-drag>
           <div className="ghp-title-block">
             <h1 className="ghp-h1" style={PAGE_H1_STYLE}>{t('panel')}</h1>
@@ -307,6 +334,15 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
               placeholder={prefs.org === undefined ? t('panel.allRepos') : `${t('panel.allRepos')}（${String(repoOptions.length)}）`}
               options={repoOptions}
               onChange={repo => actions.setRepo(repo)}
+            />
+          </Field>
+          <Field label={t('panel.milestoneFilter')}>
+            <Select
+              ariaLabel={t('panel.milestoneFilter')}
+              value={prefs.projectId === undefined ? prefs.milestone ?? '' : ''}
+              options={milestoneOptions}
+              disabled={prefs.projectId !== undefined}
+              onChange={value => actions.setMilestone(value === '' ? undefined : value)}
             />
           </Field>
           <Field label={t('panel.assignee')}>

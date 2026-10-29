@@ -299,13 +299,18 @@ export function buildRepoIssuesQuery(input: {
   states: readonly IssueState[]
   first: number
   after: string | null
+  /** Milestone title, or `undefined` for every milestone. */
+  milestone?: string
 }): GitHubGraphQLRequest {
+  const filtered = input.milestone !== undefined && input.milestone !== ''
+  const filterBy = filtered ? ', filterBy: { milestone: $milestone }' : ''
+  const declaration = filtered ? '$milestone: String' : ''
   return {
-    query: `query RepoIssues($owner: String!, $name: String!, $first: Int!, $after: String, $states: [IssueState!]) {
+    query: `query RepoIssues($owner: String!, $name: String!, $first: Int!, $after: String, $states: [IssueState!]${declaration}) {
   repository(owner: $owner, name: $name) {
     nameWithOwner
     isPrivate
-    issues(first: $first, after: $after, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}) {
+    issues(first: $first, after: $after, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}${filterBy}) {
       totalCount
       pageInfo { hasNextPage endCursor }
       nodes { ...IssueCardFields }
@@ -320,7 +325,27 @@ ${FRAGMENTS}`,
       states: [...input.states],
       first: input.first,
       after: input.after,
+      ...filtered ? { milestone: input.milestone } : {},
     },
+  }
+}
+
+/**
+ * A repository's milestones, used to fill the milestone picker.
+ * @param owner - repository owner.
+ * @param name - repository name.
+ * @returns the operation and its variables.
+ */
+export function buildRepoMilestonesQuery(owner: string, name: string): GitHubGraphQLRequest {
+  return {
+    query: `query RepoMilestones($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    milestones(first: 100, states: [OPEN, CLOSED], orderBy: {field: DUE_DATE, direction: ASC}) {
+      nodes { title state dueOn }
+    }
+  }
+}`,
+    variables: { owner, name },
   }
 }
 
@@ -491,7 +516,7 @@ export function buildOrgReposQuery(input: {
  * @param request - the scope and filters.
  * @returns e.g. `is:issue org:one2x-ai assignee:@me state:open sort:updated-desc`.
  */
-export function searchStringForFilters(request: Pick<IssueListRequest, 'org' | 'repos' | 'assignee' | 'author' | 'state'>): string {
+export function searchStringForFilters(request: Pick<IssueListRequest, 'org' | 'repos' | 'assignee' | 'author' | 'state' | 'milestone'>): string {
   const qualifiers = ['is:issue']
   if (request.org !== undefined && request.org !== '') qualifiers.push(`org:${request.org}`)
   for (const repo of request.repos ?? []) {
@@ -503,10 +528,18 @@ export function searchStringForFilters(request: Pick<IssueListRequest, 'org' | '
   } else if (request.assignee !== undefined && request.assignee !== '' && request.assignee !== 'all') {
     qualifiers.push(`assignee:${request.assignee}`)
   }
+  if (request.milestone !== undefined && request.milestone !== '') {
+    qualifiers.push(`milestone:"${escapeSearchValue(request.milestone)}"`)
+  }
   const state = stateQualifier(request.state)
   if (state !== '') qualifiers.push(state)
   qualifiers.push('sort:updated-desc')
   return qualifiers.join(' ')
+}
+
+/** Escape a value used inside a quoted GitHub search qualifier. */
+function escapeSearchValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
 /**

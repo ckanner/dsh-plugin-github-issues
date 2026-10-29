@@ -72,6 +72,8 @@ export interface GitHubApi {
   orgRepos(org: string, signal?: AbortSignal): Promise<RepoPageVM>
   /** One page of issues for a list view. */
   listIssues(request: IssueListRequest, signal?: AbortSignal): Promise<IssueListPage>
+  /** One repository's milestone titles, for the milestone picker. */
+  repoMilestones(repo: string, signal?: AbortSignal): Promise<{ milestones: string[] }>
   /** One issue with its body and linked pull requests (no timeline). */
   issueDetail(repo: string, number: number, signal?: AbortSignal): Promise<IssueBodyVM>
   /** The issue's cross-referenced pull requests; the lazy slow leg of the detail. */

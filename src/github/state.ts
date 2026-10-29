@@ -56,6 +56,10 @@ export function applyPrefsPatch(current: Prefs, patch: unknown): Prefs {
   if ('handoffMode' in input) next.handoffMode = pick(input.handoffMode, ['draft', 'send'] as const, current.handoffMode)
   if ('repo' in input) next.repo = optionalString(input.repo)
   if ('projectId' in input) next.projectId = optionalString(input.projectId)
+  if ('milestone' in input) {
+    const milestone = optionalString(input.milestone)?.trim()
+    next.milestone = milestone === undefined || milestone === '' ? undefined : milestone.slice(0, 200)
+  }
   if ('org' in input) next.org = optionalString(input.org)
   if ('promptTemplate' in input) {
     const template = typeof input.promptTemplate === 'string' ? input.promptTemplate : ''

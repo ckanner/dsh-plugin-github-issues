@@ -125,6 +125,7 @@ function snapshot(overrides: Partial<PanelSnapshot> = {}): PanelSnapshot {
     prefs,
     detailLoading: false,
     projectsBlocked: false,
+    milestoneOptions: ['v2.1', 'KAIROS 正式商用前 APPI 合规'],
     links: [{ repo: 'one2x-ai/mesh', number: 2469, sessionId: 'session-1', at: Date.now() }],
     linkCards: { 'one2x-ai/mesh#2469': card() },
     toast: 'panel.toast.copied',
