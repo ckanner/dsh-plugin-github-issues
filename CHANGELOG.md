@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.0 (2026-10-29)
+
+- The project filter is gone. The cascade is now **organization → repository →
+  milestone → assignee → state**: the organization and repository are required,
+  the first organization and its first repository are selected automatically, and
+  the repository is a plain dropdown (no searchable "all repositories" state).
+- The repository dropdown only lists repositories of the selected organization, and
+  the milestone dropdown is loaded from that repository (open and closed
+  milestones). Changing organization or repository resets the dependent choices.
+- Listing now uses the repository's exact `issues` connection with server-side
+  `filterBy`, instead of the global search. State, assignee and milestone filters
+  are applied by GitHub, `totalCount` is authoritative, and `@me` is resolved to
+  the viewer's login. This fixes the milestone filter not narrowing the list: the
+  connection wants the milestone *number* (`filterBy.milestoneNumber`), not its
+  title; a title-only request falls back to the search qualifier.
+- Removed the Projects v2 scope warning from Settings and the project-related
+  documentation.
+- The fixed toolbar / independent list and detail scrolling from 0.5.0 are
+  unchanged.
+
 ## 0.5.0 (2026-10-29)
 
 - The panel's cascade toolbar is now a fixed strip: the page title, the six-field

@@ -196,6 +196,57 @@ test('requests go to the endpoint with the token only in the header', async (t) 
   assert.ok(call.query.includes('query SearchIssues'))
 })
 
+test('a repository-scoped list uses the exact issues connection with server-side filters', async (t) => {
+  const fake = useFake(t)
+  fake.on('ScopeCatalog', { body: SCOPE_BODY })
+  fake.on('RepoIssues', {
+    body: {
+      data: {
+        repository: {
+          nameWithOwner: 'one2x-ai/mesh',
+          isPrivate: true,
+          issues: {
+            totalCount: 1,
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [ISSUE],
+          },
+        },
+        rateLimit: { cost: 1, remaining: 4799 },
+      },
+    },
+  })
+  const api = makeApi()
+  const first = await api.listIssues({
+    org: 'one2x-ai',
+    repos: ['one2x-ai/mesh'],
+    assignee: '@me',
+    state: 'open',
+    milestone: 'v2.1',
+    milestoneNumber: 7,
+  })
+  assert.equal(first.totalCount, 1)
+  assert.equal(first.items[0]?.number, 2469)
+  assert.equal(fake.count('ScopeCatalog'), 1)
+  const call = fake.calls.find(call => call.operation === 'RepoIssues')
+  assert.ok(call !== undefined)
+  // `@me` is resolved to the viewer's login; the connection filters by milestone number.
+  assert.equal(call.variables.assignee, 'ckanner')
+  assert.equal(call.variables.milestone, '7')
+  assert.ok(call.query.includes('filterBy: { assignee: $assignee, milestoneNumber: $milestone }'))
+
+  // The same request is cached.
+  const second = await api.listIssues({
+    org: 'one2x-ai',
+    repos: ['one2x-ai/mesh'],
+    assignee: '@me',
+    state: 'open',
+    milestone: 'v2.1',
+    milestoneNumber: 7,
+  })
+  assert.equal(first, second)
+  assert.equal(fake.count('RepoIssues'), 1)
+})
+
 test('list pages are cached until the list cache is invalidated', async (t) => {
   const fake = useFake(t)
   fake.on('SearchIssues', { body: SEARCH_BODY })
@@ -395,14 +446,6 @@ test('the repo view uses the issues connection for one repo and search for many'
   assert.ok(qualifiers.includes('repo:cli/cli'))
   assert.ok(qualifiers.includes('is:issue'))
   assert.equal(many.items.length, 1)
-})
-
-test('the repo view without a repository answers with a notice and no request', async (t) => {
-  const fake = useFake(t)
-  const page = await makeApi().listIssues({ view: 'repo', repos: [] })
-  assert.deepEqual(page.items, [])
-  assert.ok(page.notice?.includes('repository'))
-  assert.equal(fake.calls.length, 0)
 })
 
 test('the project view maps issue and PR items and filters drafts by state', async (t) => {

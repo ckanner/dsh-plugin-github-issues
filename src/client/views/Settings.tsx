@@ -1,9 +1,8 @@
 /**
  * The GitHub section of the Harness Settings page.
  *
- * Four cards: the read-only authorization facts (token source, scopes, and the
- * exact `gh` command that grants the Projects v2 scope), the handoff behavior,
- * the prompt template editor, and the privacy note. Nothing here writes to
+ * Four cards: the read-only authorization facts (token source and scopes), the
+ * handoff behavior, the prompt template editor, and the privacy note. Nothing here writes to
  * GitHub; the only writes are preference saves through `PanelActions`.
  *
  * @module dsh-plugin-github-issues/client/views/Settings
@@ -14,8 +13,8 @@ import type { CSSProperties } from 'react'
 import { DEFAULT_PROMPT_TEMPLATE } from '../../vm.ts'
 import type { SettingsProps } from '../viewmodel.ts'
 import {
-  Badge, Button, CommandBlock, ErrorBanner, Pill, Spinner, StyleSheet, TextArea, Toast,
-  CONTROLS_CSS, PROJECT_SCOPE_COMMAND, type Tone,
+  Badge, Button, ErrorBanner, Pill, Spinner, StyleSheet, TextArea, Toast,
+  CONTROLS_CSS, type Tone,
 } from './controls.tsx'
 import { RefreshGlyph } from './Icon.tsx'
 import {
@@ -154,18 +153,6 @@ export function GitHubSettings({ snapshot, actions, t }: SettingsProps) {
                       ? <span className="ghp-muted">—</span>
                       : status.scopes.map(scope => <Badge key={scope} tone="neutral">{scope}</Badge>)}
                   </div>
-
-                  {status.missingProjectScope && (
-                    <div className="ghs-warn" role="note">
-                      <span>{t('settings.missingProject')}</span>
-                      <span className="ghp-muted">{t('settings.command')}</span>
-                      <CommandBlock
-                        command={PROJECT_SCOPE_COMMAND}
-                        copyLabel={t('settings.copy')}
-                        onCopy={() => actions.copyText(PROJECT_SCOPE_COMMAND)}
-                      />
-                    </div>
-                  )}
                 </>
               )}
           </section>

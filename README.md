@@ -8,7 +8,7 @@ English | [中文](docs/README.zh.md)
 [![license](https://img.shields.io/npm/l/dsh-plugin-github-issues.svg)](LICENSE)
 
 Adds a GitHub Issues work surface to [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness):
-browse issues from your repositories and Projects v2 boards, read their details, and hand one to the
+browse issues from your repositories, read their details, and hand one to the
 agent. A handoff opens a new Session in the matching Workspace and stages the issue as an
 attachment-style card inside the composer; sending turns that card into the issue's task prompt.
 Handed-over issues show which Sessions own them, can be entered, and can be unlinked; one issue may be
@@ -54,19 +54,14 @@ tarball (`dsh-plugin-github-issues.tgz`), installable by path.
 - DSH Desktop with a Web GUI (developed and verified against `0.2.1-rc.3`).
 - A [`gh`](https://cli.github.com/) CLI logged in for the GitHub host you use:
   `gh auth login`. The token stays in the OS keychain and is never written into this package's config.
-- Projects v2 support additionally needs the `read:project` scope, once:
-
-  ```sh
-  gh auth refresh -h github.com -s read:project
-  ```
-
-  Without it the panel still works; the project picker explains what is missing.
+- The panel is repository-scoped: pick an organization and a repository (a default is selected for
+  you), then narrow by milestone, assignee and state.
 
 ## What you get
 
 | Surface | Where | What |
 |---|---|---|
-| GitHub panel | left rail icon → main panel | organization → project/repository → **milestone** → assignee → state cascade (remembered across restarts) in one fixed toolbar; only the list scrolls, search sits above it, and the detail pane scrolls independently (body, milestone progress, labels, priority, assignees, linked/mentioned PRs with checks and review state) |
+| GitHub panel | left rail icon → main panel | organization → repository → **milestone** → assignee → state cascade (remembered across restarts) in one fixed toolbar; a default organization/repository is selected for you, the milestone dropdown lists only that repository's milestones, and only the list scrolls (search stays above it, the detail pane scrolls independently with body, milestone progress, labels, priority, assignees, linked/mentioned PRs and checks) |
 | Issues right column | right sidebar tab | the same filtered issue list beside the Conversation, for drag-and-drop handoff |
 | Composer card | inside the input box | the staged issue: `[GitHub] owner/repo#number ×`. Type extra instructions or nothing; send converts the card into the issue prompt |
 | Linked chip | composer dock under the input | the Session's linked issue: state dot (green open / red closed) + `owner/repo#number`; click for a detail popover, remove to unlink |
@@ -76,9 +71,9 @@ tarball (`dsh-plugin-github-issues.tgz`), installable by path.
 ## Use
 
 1. Click the **GitHub** icon in the left rail.
-2. Pick an organization, a Projects v2 board or a repository, then a milestone (when the scope is a
-   repository) and an assignee/state filter. The selection is remembered in the profile's UI state
-   (not in the plugin config).
+2. Pick an organization and a repository (the first one is selected automatically), then a milestone,
+   assignee and state. The selection is remembered in the profile's UI state (not in the plugin
+   config).
 3. Click a row for the detail pane. `owner/repo#number` opens GitHub in the browser.
 4. Hand an issue over:
    - **One-click** in the detail: **Hand to agent** / **New session for this issue** opens a new
@@ -117,11 +112,11 @@ Settings → GitHub → Prompt template. Variables: `{{repo}}`, `{{number}}`, `{
 ## Limitations
 
 - Read-only: no comments, label/assignee/state writes.
-- Projects v2 needs `read:project`; priority falls back project field → organization Issue Field →
-  `P0`–`P4` labels. The milestone filter is disabled on a board because Projects v2 item filters have
-  no milestone equivalent.
-- Milestone choices come from the selected repository's full milestone list; in an all-repositories
-  scope they are accumulated from the issues already loaded.
+- The list uses the repository's exact `issues` connection, so state, assignee and milestone filters
+  are applied by GitHub (and the total is authoritative); milestone filtering sends the milestone
+  number through `filterBy.milestoneNumber`.
+- Milestone choices come from the selected repository's full milestone list (open and closed).
+- Priority falls back organization Issue Field → `P0`–`P4` labels when no project field is present.
 - The list polls every 60–120 s while visible; use **Refresh** for an immediate update.
 - The detail pane first asks for the body only and lazily loads cross-referenced PRs, so the slow
   timeline never blocks the pane.

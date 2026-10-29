@@ -23,7 +23,7 @@
 
 import type {
   IssueBodyVM, IssueCardVM, IssueDetailVM, IssueListPage, IssueListRequest, LinkedPRVM, ListView, OrgRefVM,
-  ProjectRefVM, RepoPageVM, RepoRefVM, ScopeCatalog,
+  ProjectRefVM, RepoMilestoneVM, RepoPageVM, RepoRefVM, ScopeCatalog,
 } from '../vm.ts'
 import {
   buildIssueDetailQuery, buildMentionedPRsQuery, buildOrgProjectsQuery, buildOrgReposQuery,
@@ -120,6 +120,7 @@ interface NormalizedListRequest {
   projectId?: string
   org?: string
   milestone?: string
+  milestoneNumber?: number
 }
 
 /** One page of GraphQL pagination. */
@@ -231,7 +232,7 @@ interface RawMentionedPRsData {
 /** The repository-milestones response. */
 interface RawRepoMilestonesData {
   repository?: {
-    milestones?: { nodes?: ({ title?: string | null } | null)[] | null } | null
+    milestones?: { nodes?: ({ number?: number | null; title?: string | null } | null)[] | null } | null
   } | null
 }
 
@@ -429,6 +430,9 @@ function normalizeListRequest(request: IssueListRequest): NormalizedListRequest 
   const milestone = typeof request.milestone === 'string' && request.milestone.trim() !== ''
     ? request.milestone.trim().slice(0, 200)
     : undefined
+  const milestoneNumber = typeof request.milestoneNumber === 'number' && Number.isInteger(request.milestoneNumber) && request.milestoneNumber > 0
+    ? request.milestoneNumber
+    : undefined
   const state = request.state === 'closed' || request.state === 'all' ? request.state : 'open'
   const projectId = typeof request.projectId === 'string' && request.projectId !== '' ? request.projectId : undefined
   const org = typeof request.org === 'string' && request.org !== '' ? request.org : undefined
@@ -450,6 +454,7 @@ function normalizeListRequest(request: IssueListRequest): NormalizedListRequest 
     ...projectId === undefined ? {} : { projectId },
     ...org === undefined ? {} : { org },
     ...milestone === undefined ? {} : { milestone },
+    ...milestoneNumber === undefined ? {} : { milestoneNumber },
   }
 }
 
@@ -560,7 +565,7 @@ class GitHubApiClient implements GitHubApi {
   private readonly listCache = new Map<string, Timed<IssueListPage>>()
   private readonly detailCache = new Map<string, Timed<IssueBodyVM>>()
   private readonly mentionedCache = new Map<string, Timed<{ mentionedPRs: LinkedPRVM[] }>>()
-  private readonly milestonesCache = new Map<string, Timed<{ milestones: string[] }>>()
+  private readonly milestonesCache = new Map<string, Timed<{ milestones: RepoMilestoneVM[] }>>()
   private readonly orgReposCache = new Map<string, Timed<RepoPageVM>>()
   private readonly orgProjectsCache = new Map<string, Timed<{ projects: ProjectRefVM[]; blocked: boolean; error?: string }>>()
 
@@ -698,8 +703,8 @@ class GitHubApiClient implements GitHubApi {
     return result
   }
 
-  /** A repository's milestone titles, for the milestone picker. */
-  async repoMilestones(repo: string, signal?: AbortSignal): Promise<{ milestones: string[] }> {
+  /** A repository's milestones, for the picker and its list filter. */
+  async repoMilestones(repo: string, signal?: AbortSignal): Promise<{ milestones: RepoMilestoneVM[] }> {
     const { owner, name } = splitRepo(repo)
     const cached = this.milestonesCache.get(repo)
     if (cached !== undefined && Date.now() - cached.at < MILESTONES_TTL_MS) return cached.data
@@ -708,12 +713,13 @@ class GitHubApiClient implements GitHubApi {
       signal,
     ))
     const seen = new Set<string>()
-    const milestones: string[] = []
+    const milestones: RepoMilestoneVM[] = []
     for (const node of data.repository?.milestones?.nodes ?? []) {
       const title = typeof node?.title === 'string' ? node.title : ''
-      if (title === '' || seen.has(title)) continue
+      const number = typeof node?.number === 'number' ? node.number : 0
+      if (title === '' || number <= 0 || seen.has(title)) continue
       seen.add(title)
-      milestones.push(title)
+      milestones.push({ title, number })
     }
     const result = { milestones }
     this.milestonesCache.set(repo, { at: Date.now(), data: result })
@@ -811,14 +817,16 @@ class GitHubApiClient implements GitHubApi {
     signal?: AbortSignal,
   ): Promise<IssueListPage> {
     if (request.projectId !== undefined) return await this.fetchProjectList(request, signal)
-    // A legacy repository request with no repository chosen answers with a hint
-    // instead of listing the whole account.
-    if (request.view === 'repo' && request.repos.length === 0) {
-      return emptyPage('Select a repository to read its issues.')
-    }
-    // A legacy single-repository request keeps the exact `issues` connection (and
-    // its authoritative totalCount); every cascade request is one search.
-    if (request.view === 'repo' && request.repos.length === 1 && request.assignee === 'all') {
+    // The panel is repository-scoped: one repository uses GitHub's exact `issues`
+    // connection with `filterBy`, which applies state, assignee and milestone
+    // server-side and returns an authoritative totalCount. The search path stays
+    // as a fallback for callers that pass several repositories.
+    if (request.repos.length === 1) {
+      // A milestone title without its number (e.g. options not loaded yet) still
+      // filters correctly through search; the exact connection needs the number.
+      if (request.milestone !== undefined && request.milestoneNumber === undefined) {
+        return await this.fetchSearchList(request, signal)
+      }
       return await this.fetchRepoList(request, signal)
     }
     return await this.fetchSearchList(request, signal)
@@ -844,6 +852,16 @@ class GitHubApiClient implements GitHubApi {
     }
   }
 
+  /** Resolve the `assignee:` filter to a login the issues connection accepts. */
+  private async assigneeLogin(assignee: string | undefined): Promise<string | undefined> {
+    if (assignee === undefined || assignee === '' || assignee === 'all') return undefined
+    if (assignee !== '@me') return assignee
+    const cached = this.scopesCache
+    if (cached !== undefined) return cached.data.viewer?.login
+    const scopes = await this.scopes()
+    return scopes.viewer?.login
+  }
+
   /** A page from one repository's exact `issues` connection. */
   private async fetchRepoList(
     request: NormalizedListRequest,
@@ -852,6 +870,7 @@ class GitHubApiClient implements GitHubApi {
     const [repo] = request.repos
     if (repo === undefined) return emptyPage('Select a repository to read its issues.')
     const { owner, name } = splitRepo(repo)
+    const assignee = await this.assigneeLogin(request.assignee)
     const data = this.unwrap<RawRepoData>(await this.request(
       buildRepoIssuesQuery({
         owner,
@@ -859,7 +878,8 @@ class GitHubApiClient implements GitHubApi {
         states: statesForView(request.state),
         first: request.first,
         after: request.after,
-        ...request.milestone === undefined ? {} : { milestone: request.milestone },
+        ...assignee === undefined ? {} : { assignee },
+        ...request.milestoneNumber === undefined ? {} : { milestone: String(request.milestoneNumber) },
       }),
       signal,
     ))

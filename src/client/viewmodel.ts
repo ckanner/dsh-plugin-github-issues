@@ -11,7 +11,7 @@
 import type { InputActions, Translate } from './context.ts'
 import type {
   GitHubStatus, IssueCardVM, IssueDetailVM, IssueLinkRecord, IssueListPage, Prefs, PrefsPatch,
-  ProjectRefVM, RepoPageVM, ScopeCatalog,
+  ProjectRefVM, RepoMilestoneVM, RepoPageVM, ScopeCatalog,
 } from '../vm.ts'
 
 /** One panel error, in a shape the renderer can display. */
@@ -31,8 +31,8 @@ export interface PanelSnapshot {
   orgProjects?: ProjectRefVM[] | undefined
   /** The selected organization's repositories, loaded on demand. */
   orgRepos?: RepoPageVM | undefined
-  /** Milestone titles seen for the current scope, for the milestone picker. */
-  milestoneOptions: string[]
+  /** Milestones of the selected repository, for the picker and list filter. */
+  milestoneOptions: RepoMilestoneVM[]
   list?: IssueListPage | undefined
   loading: boolean
   loadingMore: boolean
@@ -94,12 +94,10 @@ export interface PanelActions {
   refresh(): void
   /** Append the next page. */
   loadMore(): void
-  /** Select the organization boundary; `undefined` means all organizations. */
-  setOrg(org: string | undefined): void
-  /** Select a Projects v2 board inside the organization. */
-  setProject(projectId: string | undefined): void
-  /** Select one repository inside the organization (or the viewer's repos). */
-  setRepo(repo: string | undefined): void
+  /** Select the organization boundary. */
+  setOrg(org: string): void
+  /** Select one repository inside the organization. */
+  setRepo(repo: string): void
   /** Select one milestone title inside the current scope. */
   setMilestone(milestone: string | undefined): void
   /** Choose who the list is assigned to: `@me`, `all`, or a login. */

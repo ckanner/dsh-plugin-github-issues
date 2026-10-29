@@ -299,12 +299,26 @@ export function buildRepoIssuesQuery(input: {
   states: readonly IssueState[]
   first: number
   after: string | null
+  /** Resolved assignee login, or `undefined` for everyone. */
+  assignee?: string
   /** Milestone title, or `undefined` for every milestone. */
   milestone?: string
 }): GitHubGraphQLRequest {
-  const filtered = input.milestone !== undefined && input.milestone !== ''
-  const filterBy = filtered ? ', filterBy: { milestone: $milestone }' : ''
-  const declaration = filtered ? '$milestone: String' : ''
+  const filters: string[] = []
+  const declarations: string[] = []
+  const variables: Record<string, unknown> = {}
+  if (input.assignee !== undefined && input.assignee !== '') {
+    filters.push('assignee: $assignee')
+    declarations.push('$assignee: String')
+    variables.assignee = input.assignee
+  }
+  if (input.milestone !== undefined && input.milestone !== '') {
+    filters.push('milestoneNumber: $milestone')
+    declarations.push('$milestone: String')
+    variables.milestone = input.milestone
+  }
+  const filterBy = filters.length === 0 ? '' : `, filterBy: { ${filters.join(', ')} }`
+  const declaration = declarations.length === 0 ? '' : `, ${declarations.join(', ')}`
   return {
     query: `query RepoIssues($owner: String!, $name: String!, $first: Int!, $after: String, $states: [IssueState!]${declaration}) {
   repository(owner: $owner, name: $name) {
@@ -325,7 +339,7 @@ ${FRAGMENTS}`,
       states: [...input.states],
       first: input.first,
       after: input.after,
-      ...filtered ? { milestone: input.milestone } : {},
+      ...variables,
     },
   }
 }
@@ -341,7 +355,7 @@ export function buildRepoMilestonesQuery(owner: string, name: string): GitHubGra
     query: `query RepoMilestones($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     milestones(first: 100, states: [OPEN, CLOSED], orderBy: {field: DUE_DATE, direction: ASC}) {
-      nodes { title state dueOn }
+      nodes { number title state dueOn }
     }
   }
 }`,

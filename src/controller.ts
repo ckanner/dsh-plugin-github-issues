@@ -20,7 +20,7 @@ import type { PrefsStore } from './github/state.ts'
 import type {
   GitHubStatus, IssueBodyVM, IssueCardVM, IssueDetailVM, IssueLinkRecord, IssueListPage,
   LinkedPRVM, Prefs,
-  ProjectRefVM, RepoPageVM, ScopeCatalog,
+  ProjectRefVM, RepoMilestoneVM, RepoPageVM, ScopeCatalog,
 } from './vm.ts'
 
 /** How long one resolved token is reused before asking `gh` again. */
@@ -218,9 +218,9 @@ export class GitHubIssuesController extends TypertRemoteService {
     return this.withApi(api => api.issueDetail(repo, number))
   }
 
-  /** One repository's milestone titles, for the milestone picker. */
+  /** One repository's milestones, for the picker and its list filter. */
   @Remote
-  async repoMilestones(repo: string): Promise<{ milestones: string[] }> {
+  async repoMilestones(repo: string): Promise<{ milestones: RepoMilestoneVM[] }> {
     return this.withApi(api => api.repoMilestones(repo))
   }
 

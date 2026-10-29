@@ -6,7 +6,7 @@
 [![npm](https://img.shields.io/npm/v/dsh-plugin-github-issues.svg)](https://www.npmjs.com/package/dsh-plugin-github-issues)
 
 给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 增加一个 GitHub Issue 工作区：
-按组织 / Projects v2 项目 / 仓库浏览 Issue，查看详情，并把 Issue 交给 Agent。交办会在匹配的
+按组织 / 仓库浏览 Issue，查看详情，并把 Issue 交给 Agent。交办会在匹配的
 Workspace 里新开一个 Session，并在输入框内以"附件卡片"的形式暂存这个 Issue；点击发送时卡片会
 转成 Issue 的提示词。已交办的 Issue 会显示处理它的 Session，可以进入，也可以解除关联；同一个
 Issue 可以关联多个 Session。
@@ -50,19 +50,13 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 
 - DSH Desktop（Web GUI；开发与验证于 `0.2.1-rc.3`）。
 - 已登录的 `gh` CLI：`gh auth login`。token 留在系统钥匙串，不会写进插件配置。
-- 需要 Projects v2 时一次性补权限：
-
-  ```sh
-  gh auth refresh -h github.com -s read:project
-  ```
-
-  没有该权限时面板照常工作，项目选择器会说明缺什么。
+- 面板以仓库为范围：先选组织、再选仓库（会自动选中默认项），然后按里程碑、assignee、状态收窄。
 
 ## 功能
 
 | 界面 | 位置 | 内容 |
 |---|---|---|
-| GitHub 面板 | 左侧栏图标 → 主面板 | 组织 → 项目/仓库 → **里程碑** → assignee → 状态 级联筛选（记住上次选择）固定在一行；只有列表滚动，搜索在列表上方固定；详情栏独立滚动（正文、Milestone 进度、标签、优先级、assignee、关联/提及 PR 的 checks 与 review） |
+| GitHub 面板 | 左侧栏图标 → 主面板 | 组织 → 仓库 → **里程碑** → assignee → 状态 级联筛选（记住上次选择）固定在一行；组织和仓库会自动选中默认项，里程碑下拉只列当前仓库的里程碑；只有列表滚动，搜索在列表上方固定；详情栏独立滚动（正文、Milestone 进度、标签、优先级、assignee、关联/提及 PR 的 checks 与 review） |
 | Issues 右栏 | 右侧栏页签 | 与对话同屏的同一份筛选列表，用于拖拽交办 |
 | 输入框卡片 | 输入框内部 | 暂存的 Issue：`[GitHub] owner/repo#number ×`。可以补充自己的文字，也可以不写；发送时卡片转成提示词 |
 | 已关联 chip | 输入框下方 dock | 当前 Session 关联的 Issue：状态圆点（open 绿 / closed 红）+ `owner/repo#number`；点击看详情，× 解除关联 |
@@ -72,8 +66,8 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 ## 使用
 
 1. 点击左侧栏 **GitHub** 图标。
-2. 选择组织、Projects v2 板或仓库，再选里程碑（仓库范围时）和 assignee/状态。选择会记在 profile
-   的 UI 状态里（不在插件配置中）。
+2. 选择组织和仓库（默认自动选中第一个），再选里程碑、assignee 和状态。选择会记在 profile 的
+   UI 状态里（不在插件配置中）。
 3. 点一行查看详情；点 `owner/repo#number` 在浏览器打开 GitHub。
 4. 交办：
    - 详情里点「交给 Agent」/「再开一个 Session」：在匹配的 Workspace 新开 Session，输入框内出现
@@ -106,9 +100,10 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 ## 限制
 
 - 只读：不发评论、不改标签/指派/状态。
-- Projects v2 需要 `read:project`；优先级回退顺序：项目字段 → 组织 Issue Field → `P0`–`P4` 标签。
-  Projects v2 的条目筛选没有里程碑等价物，因此选中项目板时里程碑筛选会禁用。
-- 里程碑的可选项：选中仓库时取该仓库的完整里程碑列表；全部仓库范围时从已加载的 Issue 中累积。
+- 列表使用仓库的 `issues` 连接，状态、assignee、里程碑都由 GitHub 服务端过滤（总数也是权威的）；
+  里程碑通过 `filterBy.milestoneNumber` 按编号过滤。
+- 里程碑的可选项来自当前仓库的完整里程碑列表（含已关闭）。
+- 优先级回退顺序：组织 Issue Field → `P0`–`P4` 标签（不再读取 Projects v2 项目字段）。
 - 列表可见时每 60–120 秒轮询一次；需要立刻更新点「刷新」。
 - 详情先请求正文，交叉引用 PR 懒加载，慢的 timeline 不阻塞面板。
 - "发送时卡片转提示词"依赖 composer 的 DOM（原生发送按钮 / 回车），DSH 升级后需要重新核对。

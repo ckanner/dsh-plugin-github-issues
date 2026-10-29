@@ -143,6 +143,13 @@ export interface IssueLinkRecord {
   at: number
 }
 
+/** One repository milestone, as the picker and the list filter see it. */
+export interface RepoMilestoneVM {
+  title: string
+  /** GraphQL's `IssueFilters.milestone` wants this number, not the title. */
+  number: number
+}
+
 /** One page of the list. */
 export interface IssueListPage {
   items: IssueCardVM[]
@@ -179,6 +186,8 @@ export interface IssueListRequest {
   author?: string
   /** Milestone title qualifier (`milestone:"..."` in search). */
   milestone?: string
+  /** Milestone number for the repository `issues` connection's `filterBy`. */
+  milestoneNumber?: number
   /** Open/closed/all filter. */
   state?: 'open' | 'closed' | 'all'
   first?: number

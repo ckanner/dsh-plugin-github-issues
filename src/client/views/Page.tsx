@@ -1,24 +1,24 @@
 /**
  * The full-page GitHub Issues panel.
  *
- * One scrollable page, laid out like the shipped management pages: a 960px
- * content column, a draggable header, the scope cascade (organization → project →
- * repository → assignee → state), a local filter, and the issue list. When a row
- * is selected the list keeps its width and the detail pane opens beside it.
+ * A fixed shell (title, cascade, search) with one scrolling issue list and an
+ * independently scrolling detail pane. The cascade starts from a chosen
+ * organization and repository (there is no "all repositories" state), then
+ * narrows by milestone, assignee and state.
  *
- * The page owns only local UI state (the filter text and the repository combobox
- * input); every list request and every mutation goes through `PanelActions`.
+ * The page owns only local UI state (the filter text); every list request and
+ * every mutation goes through `PanelActions`.
  *
  * @module dsh-plugin-github-issues/client/views/Page
  */
 
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { IssueCardVM, Prefs } from '../../vm.ts'
 import type { PageProps } from '../viewmodel.ts'
 import {
-  Button, CommandBlock, EmptyState, ErrorBanner, IconButton, Select, Spinner, StyleSheet,
-  TextInput, Toast, CONTROLS_CSS, PROJECT_SCOPE_COMMAND,
+  Button, EmptyState, ErrorBanner, IconButton, Select, Spinner, StyleSheet, TextInput, Toast,
+  CONTROLS_CSS,
 } from './controls.tsx'
 import { CloseGlyph, GitHubIcon, RefreshGlyph, SearchGlyph } from './Icon.tsx'
 import { IssueDetailPane, ISSUE_DETAIL_CSS } from './IssueDetail.tsx'
@@ -82,7 +82,7 @@ export const PAGE_CSS = `
 .ghp-panel .ghp-split{flex:1;min-height:0;width:100%;align-items:stretch}
 .ghp-panel .ghp-list-pane{flex:1;min-width:0;overflow:auto;overscroll-behavior:contain;padding-bottom:32px}
 .ghp-panel .ghx-pane{flex:0 0 380px;box-sizing:border-box;width:380px;max-height:100%;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:32px}
-.ghp-panel .ghp-scope{grid-template-columns:minmax(0,.95fr) minmax(0,.95fr) minmax(0,1.3fr) minmax(0,1.3fr) minmax(0,.95fr) minmax(0,.75fr);gap:10px;margin-top:14px}
+.ghp-panel .ghp-scope{grid-template-columns:minmax(0,1.05fr) minmax(0,1.55fr) minmax(0,1.55fr) minmax(0,1fr) minmax(0,.8fr);gap:10px;margin-top:14px}
 @media (max-width:860px){.ghp-panel .ghp-scope{grid-template-columns:repeat(auto-fit,minmax(124px,1fr))}}
 .ghp-panel .ghp-filters{margin:12px 0 6px}
 @media (max-width:760px){
@@ -131,12 +131,6 @@ const STATE_LABEL: Record<Prefs['state'], string> = {
   all: 'panel.state.all',
 }
 
-/** One option a native datalist offers. */
-interface ComboOption {
-  value: string
-  label: string
-}
-
 /**
  * One labelled control in the scope grid. The label sits above every control so
  * selects and the repository combobox share one baseline.
@@ -149,62 +143,6 @@ function Field(props: { label: string, children: ReactNode }) {
       <span className="ghp-field-label">{props.label}</span>
       {props.children}
     </div>
-  )
-}
-
-/**
- * A searchable picker: a text input backed by a native `<datalist>`.
- * @param props - label, current selection, options, and the change callback.
- * @returns the labelled combobox.
- */
-function ScopeCombo(props: {
-  label: string
-  value: string | undefined
-  placeholder: string
-  options: readonly ComboOption[]
-  disabled?: boolean
-  onChange: (value: string | undefined) => void
-}) {
-  const { label, value, placeholder, options, disabled, onChange } = props
-  const listId = useId()
-  const selected = options.find(option => option.value === value)
-  const [text, setText] = useState(selected?.label ?? '')
-
-  // The parent owns the selection: follow it when it changes elsewhere.
-  useEffect(() => {
-    const current = options.find(option => option.value === value)
-    setText(current?.label ?? '')
-  }, [value, options])
-
-  return (
-    <>
-      <input
-        className="gh-input"
-        list={listId}
-        value={text}
-        disabled={disabled === true}
-        placeholder={placeholder}
-        aria-label={label}
-        onChange={event => {
-          const next = event.target.value
-          setText(next)
-          if (next === '') {
-            onChange(undefined)
-            return
-          }
-          const match = options.find(option => option.label === next || option.value === next)
-          if (match !== undefined) onChange(match.value)
-        }}
-        onBlur={() => {
-          // A half-typed name reverts to the actual selection.
-          const current = options.find(option => option.value === value)
-          setText(current?.label ?? '')
-        }}
-      />
-      <datalist id={listId}>
-        {options.map(option => <option key={option.value} value={option.label} />)}
-      </datalist>
-    </>
   )
 }
 
@@ -239,18 +177,11 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
   }))
 
   const orgs = snapshot.catalog?.orgs ?? []
-  const orgOptions = [
-    { value: '', label: t('panel.allOrgs') },
-    ...orgs.map(org => ({ value: org.login, label: org.name === undefined ? org.login : `${org.login} · ${org.name}` })),
-  ]
-  const projectOptions = [
-    { value: '', label: t('panel.allProjects') },
-    ...(snapshot.orgProjects ?? []).map(project => ({ value: project.id, label: project.title })),
-  ]
-  const repoSource = prefs.org === undefined
-    ? (snapshot.catalog?.repos ?? [])
-    : (snapshot.orgRepos?.items ?? [])
-  const repoOptions: ComboOption[] = repoSource.map(repo => ({
+  const orgOptions = orgs.map(org => ({
+    value: org.login,
+    label: org.name === undefined ? org.login : `${org.login} · ${org.name}`,
+  }))
+  const repoOptions = (snapshot.orgRepos?.items ?? []).map(repo => ({
     value: repo.nameWithOwner,
     label: `${repo.nameWithOwner}${repo.isPrivate ? ` · ${t('panel.private')}` : ''}${repo.isFork === true ? ` · ${t('panel.fork')}` : ''}`,
   }))
@@ -260,7 +191,7 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
   ]
   const milestoneTitles = [
     ...prefs.milestone === undefined ? [] : [prefs.milestone],
-    ...(snapshot.milestoneOptions ?? []),
+    ...(snapshot.milestoneOptions ?? []).map(item => item.title),
   ].filter((title, index, all) => title !== '' && all.indexOf(title) === index)
   const milestoneOptions = [
     { value: '', label: t('panel.allMilestones') },
@@ -281,7 +212,7 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
   const scopeHint =
     prefs.org === undefined
       ? t('panel.scopeGlobal')
-      : `${prefs.org}${prefs.projectId === undefined ? '' : ` · ${t('panel.project')}`}${prefs.repo === undefined ? '' : ` · ${prefs.repo}`}`
+      : `${prefs.org}${prefs.repo === undefined ? '' : ` · ${prefs.repo}`}${prefs.milestone === undefined ? '' : ` · ${prefs.milestone}`}`
 
   return (
     <section className="ghp-page ghp-panel" data-github-panel aria-label={t('panel')}>
@@ -315,33 +246,25 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
               ariaLabel={t('panel.org')}
               value={prefs.org ?? ''}
               options={orgOptions}
-              onChange={value => actions.setOrg(value === '' ? undefined : value)}
-            />
-          </Field>
-          <Field label={t('panel.project')}>
-            <Select
-              ariaLabel={t('panel.project')}
-              value={prefs.org === undefined ? '' : prefs.projectId ?? ''}
-              options={projectOptions}
-              disabled={prefs.org === undefined || snapshot.projectsBlocked}
-              onChange={value => actions.setProject(value === '' ? undefined : value)}
+              disabled={orgOptions.length === 0}
+              onChange={value => actions.setOrg(value)}
             />
           </Field>
           <Field label={t('panel.repoFilter')}>
-            <ScopeCombo
-              label={t('panel.repoFilter')}
-              value={prefs.repo}
-              placeholder={prefs.org === undefined ? t('panel.allRepos') : `${t('panel.allRepos')}（${String(repoOptions.length)}）`}
+            <Select
+              ariaLabel={t('panel.repoFilter')}
+              value={prefs.repo ?? ''}
               options={repoOptions}
-              onChange={repo => actions.setRepo(repo)}
+              disabled={repoOptions.length === 0}
+              onChange={value => actions.setRepo(value)}
             />
           </Field>
           <Field label={t('panel.milestoneFilter')}>
             <Select
               ariaLabel={t('panel.milestoneFilter')}
-              value={prefs.projectId === undefined ? prefs.milestone ?? '' : ''}
+              value={prefs.milestone ?? ''}
               options={milestoneOptions}
-              disabled={prefs.projectId !== undefined}
+              disabled={prefs.repo === undefined || snapshot.scopeLoading}
               onChange={value => actions.setMilestone(value === '' ? undefined : value)}
             />
           </Field>
@@ -362,23 +285,6 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
             />
           </Field>
         </div>
-
-        {prefs.org === undefined && (
-          <div className="ghp-notice" role="note">
-            <span>{t('panel.pickOrgHint')}</span>
-          </div>
-        )}
-
-        {snapshot.projectsBlocked && prefs.org !== undefined && (
-          <div className="ghp-notice" role="note">
-            <span>{t('panel.projectsBlocked')}</span>
-            <CommandBlock
-              command={PROJECT_SCOPE_COMMAND}
-              copyLabel={t('panel.copyCommand')}
-              onCopy={() => actions.copyText(PROJECT_SCOPE_COMMAND)}
-            />
-          </div>
-        )}
 
         <div className="ghp-filters">
           <div className="ghp-search">
@@ -408,15 +314,7 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
                 message={t('panel.error', { message: listError.message })}
                 retryLabel={t('panel.refresh')}
                 onRetry={() => actions.refresh()}
-              >
-                {listError.code === 'missing_scope' && (
-                  <CommandBlock
-                    command={PROJECT_SCOPE_COMMAND}
-                    copyLabel={t('panel.copyCommand')}
-                    onCopy={() => actions.copyText(PROJECT_SCOPE_COMMAND)}
-                  />
-                )}
-              </ErrorBanner>
+              />
             )}
 
             {showSkeleton && (
@@ -433,7 +331,7 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
             {showEmpty && (
               <EmptyState
                 icon={<GitHubIcon size={28} />}
-                title={noAuth ? t('panel.emptyAuth') : snapshot.list?.notice ?? emptyTitle(prefs, snapshot.list?.totalCount, t)}
+                title={noAuth ? t('panel.emptyAuth') : snapshot.list?.notice ?? t('panel.empty')}
               />
             )}
 
@@ -483,13 +381,3 @@ export function GitHubPage({ snapshot, actions, t, resolveSession }: PageProps) 
  * @param t - translate function.
  * @returns the sentence to show.
  */
-function emptyTitle(prefs: Prefs, total: number | undefined, t: PageProps['t']): string {
-  const projectId = prefs.org === undefined ? undefined : prefs.projectId
-  if (projectId !== undefined && prefs.assignee === '@me') {
-    return t('panel.emptyProjectMe', { count: total ?? 0 })
-  }
-  if (projectId !== undefined && prefs.state === 'open') {
-    return t('panel.emptyProjectOpen')
-  }
-  return t('panel.empty')
-}
