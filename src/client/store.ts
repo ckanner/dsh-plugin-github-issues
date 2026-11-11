@@ -13,7 +13,7 @@
  * @module dsh-plugin-github-issues/client/store
  */
 
-import { renderPrompt } from '../prompt.ts'
+import { PENDING_DRAFT_SENTINEL, renderPrompt } from '../prompt.ts'
 import { REMOTE_NAMESPACE } from '../remote-methods.ts'
 import {
   DEFAULT_PREFS, type GitHubStatus, type IssueBodyVM, type IssueCardVM, type IssueDetailVM,
@@ -720,11 +720,14 @@ export class GitHubStore implements PanelActions {
     void (async () => {
       try {
         const sessionId = await uiWorkspace.connectWorkspace(workspaceId)
-        // The card itself is the draft: the overlay writes the invisible sentinel
-        // once the new Session's composer mounts, so a Workspace switch carries
-        // the marker (and therefore the card) with the transferred draft.
+        // The card itself is the draft: seed the invisible sentinel as the new
+        // Session's initial prompt so the marker exists before the composer first
+        // renders, and a Workspace switch carries it (and the card) with the draft.
         this.update({ pendingHandoff: card, pendingHandoffSession: sessionId })
-        uiWorkspace.startSession(workspaceId, { whenDraftExists: 'replace' })
+        uiWorkspace.startSession(workspaceId, {
+          prompt: PENDING_DRAFT_SENTINEL,
+          whenDraftExists: 'replace',
+        })
       } catch (error) {
         this.update({ error: asPanelError(error) })
       }

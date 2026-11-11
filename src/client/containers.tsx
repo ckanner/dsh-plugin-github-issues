@@ -181,6 +181,10 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
   const sending = useRef(false)
   /** The session+card already staged, so a user-deleted marker is not re-added. */
   const stagedFor = useRef<string | undefined>(undefined)
+  /** The last draft already repaired with the sentinel; prevents an editor-loop. */
+  const repairedFor = useRef<string | undefined>(undefined)
+  /** The sentinel was observed in the draft at least once (for clear detection). */
+  const sawSentinel = useRef(false)
   const input = useInput === undefined ? undefined : useInput(state => state)
   const latestInput = useRef(input)
   latestInput.current = input
@@ -209,11 +213,27 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
     }
   }, [card, draft, inputActions, pending?.id, sessionId, snapshot.pendingHandoffSession])
 
-  // Withdraw the card locally when the invisible marker disappears (manual edit
-  // or clear). The store keeps the card so a transferred draft can recover it.
+  // Typing must not withdraw the card. Some editors normalize/remove leading
+  // invisible characters on the first edit; repair the draft once per distinct
+  // value without ever clobbering the user's text (the repaired value is
+  // remembered, so an editor that keeps stripping cannot form a loop).
   useEffect(() => {
-    if (pending === undefined) return
-    if (!draft.includes(PENDING_DRAFT_SENTINEL)) setPending(undefined)
+    if (draft.includes(PENDING_DRAFT_SENTINEL)) {
+      sawSentinel.current = true
+      return
+    }
+    if (pending === undefined || inputActions === undefined || sending.current) return
+    if (draft === '') return
+    if (repairedFor.current === draft) return
+    repairedFor.current = draft
+    inputActions.setDraft(`${PENDING_DRAFT_SENTINEL}${draft}`)
+  }, [draft, inputActions, pending])
+
+  // The user emptied the composer after having the card: withdraw it locally
+  // (the store keeps the handoff so a transferred draft can still recover it).
+  useEffect(() => {
+    if (pending === undefined || draft !== '' || !sawSentinel.current || sending.current) return
+    setPending(undefined)
   }, [draft, pending])
 
   // The card overlays the top of the composer card: reserve its height so text

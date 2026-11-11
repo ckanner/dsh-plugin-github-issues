@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.1 (2026-10-29)
+
+- Typing in the composer no longer removes the pending issue card. The invisible
+  draft marker is now seeded as the new Session's initial prompt (instead of being
+  written by an effect after the composer mounted), so it exists before the first
+  keystroke; the card also no longer withdraws just because a draft update did not
+  carry the marker. If an editor normalizes the marker away, the composer adds it
+  back once per distinct draft without overwriting the typed text.
+- Restored clear-to-cancel once the marker was definitely present: emptying the
+  composer withdraws the card locally (the store keeps the handoff so a Workspace
+  transfer can still recover it).
+
 ## 0.8.0 (2026-10-29)
 
 - The pending handoff now looks like DSH's own draft attachment: a 240×64
