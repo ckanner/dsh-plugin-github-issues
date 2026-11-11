@@ -25,6 +25,13 @@ test('the sent-text rule turns the prompt heading into a card with title and sta
   })
 })
 
+test('a leading handoff marker does not hide the heading', () => {
+  const text = '\u200a处理 GitHub Issue：one2x-ai/mesh#2469 标题'
+  const match = GITHUB_ISSUE_RULE.match(text, 0)
+  assert.ok(match !== undefined)
+  assert.equal(text.slice(match.start, match.end), '处理 GitHub Issue：one2x-ai/mesh#2469 标题')
+})
+
 test('the rule requires the prompt heading and a valid number', () => {
   assert.equal(GITHUB_ISSUE_RULE.match('one2x-ai/mesh#2469 只是普通文字', 0), undefined)
   assert.equal(GITHUB_ISSUE_RULE.match('处理 GitHub Issue：one2x-ai/mesh#0', 0), undefined)

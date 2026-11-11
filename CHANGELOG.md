@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.4 (2026-10-29)
+
+- The sent-message card matcher now accepts the whitespace handoff marker before
+  the prompt heading; without this the leading hair space hid the heading from
+  the UserText rule and 0.8.3 messages fell back to plain text.
+
 ## 0.8.3 (2026-10-29)
 
 - The draft marker is now a single **hair space** (`U+200A`, Unicode whitespace).

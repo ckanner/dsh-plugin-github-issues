@@ -50,8 +50,10 @@ export const GITHUB_ISSUE_RULE: GitHubIssueReferenceRule = {
   match(text, from) {
     ISSUE_HEADING.lastIndex = from
     for (let match = ISSUE_HEADING.exec(text); match !== null; match = ISSUE_HEADING.exec(text)) {
-      // Only a real prompt heading at a line start; never a substring of prose.
-      if (match.index !== 0 && text[match.index - 1] !== '\n') continue
+      // Only a real prompt heading at a line start. The handoff draft starts with
+      // a whitespace marker, so the heading may be preceded by that whitespace.
+      const before = match.index === 0 ? '' : (text[match.index - 1] ?? '')
+      if (before !== '' && before !== '\n' && !/\s/u.test(before)) continue
       const repo = match[1]
       const numberText = match[2]
       if (repo === undefined || numberText === undefined) continue
