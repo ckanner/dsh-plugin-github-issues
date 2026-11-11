@@ -181,8 +181,6 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
   const sending = useRef(false)
   /** The session+card already staged, so a user-deleted marker is not re-added. */
   const stagedFor = useRef<string | undefined>(undefined)
-  /** The last draft already repaired with the sentinel; prevents an editor-loop. */
-  const repairedFor = useRef<string | undefined>(undefined)
   /** The sentinel was observed in the draft at least once (for clear detection). */
   const sawSentinel = useRef(false)
   const input = useInput === undefined ? undefined : useInput(state => state)
@@ -213,21 +211,11 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
     }
   }, [card, draft, inputActions, pending?.id, sessionId, snapshot.pendingHandoffSession])
 
-  // Typing must not withdraw the card. Some editors normalize/remove leading
-  // invisible characters on the first edit; repair the draft once per distinct
-  // value without ever clobbering the user's text (the repaired value is
-  // remembered, so an editor that keeps stripping cannot form a loop).
+  // The marker is whitespace, so it never needs re-injection and can never grow
+  // into visible indentation. Remember that it was there for clear detection.
   useEffect(() => {
-    if (draft.includes(PENDING_DRAFT_SENTINEL)) {
-      sawSentinel.current = true
-      return
-    }
-    if (pending === undefined || inputActions === undefined || sending.current) return
-    if (draft === '') return
-    if (repairedFor.current === draft) return
-    repairedFor.current = draft
-    inputActions.setDraft(`${PENDING_DRAFT_SENTINEL}${draft}`)
-  }, [draft, inputActions, pending])
+    if (draft.includes(PENDING_DRAFT_SENTINEL)) sawSentinel.current = true
+  }, [draft])
 
   // The user emptied the composer after having the card: withdraw it locally
   // (the store keeps the handoff so a transferred draft can still recover it).

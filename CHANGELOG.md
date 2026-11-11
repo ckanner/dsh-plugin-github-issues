@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.3 (2026-10-29)
+
+- The draft marker is now a single **hair space** (`U+200A`, Unicode whitespace).
+  That keeps the card visible, makes `/command` and `@reference` typed after the
+  card work (the trigger sees a token boundary and the command leading guard's
+  `trim()` removes the marker), and—because it is whitespace—never accumulates
+  into the visible indentation seen in 0.8.2. The re-injection repair that caused
+  those growing spaces is gone.
+- A sent user message now shows the same 240×64 issue card: a UserText rule matches
+  the prompt heading (`处理 GitHub Issue：owner/repo#number title`) and folds the
+  table's state into the card. The card links to the issue URL. The metadata table
+  still renders as a table below it.
+- The rule and renderer are registered through `uiConversation.userText` and
+  `conversation.user.text.node`, so existing messages are upgraded too.
+
 ## 0.8.2 (2026-10-29)
 
 - Typing a slash command or a skill reference after the pending card now works:

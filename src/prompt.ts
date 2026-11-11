@@ -73,16 +73,16 @@ export function renderPrompt(issue: PromptIssue, template: string): string {
 }
 
 /**
- * The invisible draft marker that keeps the native send enabled and lets the
- * pending card survive a Session/Workspace transfer.
+ * The draft marker that keeps the pending card recoverable and lets triggers work.
  *
- * DSH transfers the draft text when the composer switches Workspace, so keeping
- * this marker in the draft is what lets the new Session's composer find the card
- * again. `U+2063` (invisible separator) plus a zero-width space is invisible and
- * non-whitespace, so the composer treats the draft as occupied without showing
- * characters.
+ * It is a single hair space (`U+200A`): effectively invisible, but Unicode
+ * whitespace. That matters twice over: the composer treats the draft as occupied
+ * so native sends are not refused, and a `/command` or `@reference` typed after
+ * the card is preceded by whitespace, so the input trigger pipeline sees a token
+ * boundary. The old non-whitespace marker made commands fail unless the user
+ * typed an extra space.
  */
-export const PENDING_DRAFT_SENTINEL = '\u2063\u200b '
+export const PENDING_DRAFT_SENTINEL = '\u200a'
 
 /** Backwards-compatible name for the marker the old overlay used. */
 export const EMPTY_DRAFT_HOLD = PENDING_DRAFT_SENTINEL

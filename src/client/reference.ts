@@ -1,16 +1,18 @@
 /**
- * The UserText rule that recognises issue references in sent messages.
+ * The UserText rule that recognises the handoff prompt's issue heading.
  *
- * The composer card itself covers the typing surface; this rule is what keeps a
- * recognisable, clickable issue reference once the prompt lands in the
- * transcript. The model-visible text is unchanged: only the display is matched.
+ * The composer card covers the typing surface; this rule is what gives a sent
+ * message the same card presentation. It replaces the prompt line
+ * `处理 GitHub Issue：owner/repo#number title` with the issue card and folds the
+ * metadata table's state into the card's second line. The model-visible text is
+ * unchanged: only the display is matched.
  *
  * @module dsh-plugin-github-issues/client/reference
  */
 
 import type { GitHubIssueReferenceData } from './views/IssueReference.tsx'
 
-/** One UserText match for the GitHub issue grammar. */
+/** One UserText match for the handoff prompt heading. */
 export interface GitHubIssueReferenceRule {
   id: 'github-issue'
   order: number
@@ -22,21 +24,41 @@ export interface GitHubIssueReferenceRule {
   } | undefined
 }
 
-/** The token grammar: `owner/repo#123`, not embedded in a longer word or URL. */
-const ISSUE_TOKEN = /(?<![A-Za-z0-9_.\-/])([A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+)#([1-9][0-9]*)/g
+/** The prompt heading; the optional tail is the title on the same line. */
+const ISSUE_HEADING = /处理 GitHub Issue：([A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+)#([1-9][0-9]*)(?:[ \t]+([^\n]+))?/g
+
+/** The state cell of the default metadata table, or the legacy state line. */
+const STATE_TABLE = /\|\s*状态\s*\|\s*([^|\n]+?)\s*\|/u
+const STATE_LEGACY = /状态：([^\n｜|]+)/u
+
+/**
+ * Extract the issue's state from the prompt body.
+ * @param text - the whole user message.
+ * @returns the state label, when the prompt carries one.
+ */
+function stateOf(text: string): string | undefined {
+  const table = STATE_TABLE.exec(text)
+  if (table?.[1] !== undefined) return table[1].trim()
+  const legacy = STATE_LEGACY.exec(text)
+  return legacy?.[1]?.trim()
+}
 
 /** The UserText rule registered with the conversation service. */
 export const GITHUB_ISSUE_RULE: GitHubIssueReferenceRule = {
   id: 'github-issue',
   order: 40,
   match(text, from) {
-    ISSUE_TOKEN.lastIndex = from
-    for (let match = ISSUE_TOKEN.exec(text); match !== null; match = ISSUE_TOKEN.exec(text)) {
+    ISSUE_HEADING.lastIndex = from
+    for (let match = ISSUE_HEADING.exec(text); match !== null; match = ISSUE_HEADING.exec(text)) {
+      // Only a real prompt heading at a line start; never a substring of prose.
+      if (match.index !== 0 && text[match.index - 1] !== '\n') continue
       const repo = match[1]
       const numberText = match[2]
       if (repo === undefined || numberText === undefined) continue
       const number = Number(numberText)
       if (!Number.isInteger(number) || number <= 0) continue
+      const title = match[3]?.trim()
+      const state = stateOf(text)
       return {
         id: 'github-issue',
         start: match.index,
@@ -45,6 +67,8 @@ export const GITHUB_ISSUE_RULE: GitHubIssueReferenceRule = {
           repo,
           number,
           url: `https://github.com/${repo}/issues/${String(number)}`,
+          ...title === undefined || title === '' ? {} : { title },
+          ...state === undefined || state === '' ? {} : { state },
         },
       }
     }

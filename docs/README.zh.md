@@ -15,6 +15,8 @@ Issue 可以关联多个 Session。
 
 ![输入框里的待发送 Issue 卡片](../assets/pending.png)
 
+![发送后消息里的 Issue 卡片](../assets/message-card.png)
+
 插件对 GitHub **只读**，不会写入任何内容。
 
 ## 安装
@@ -107,8 +109,9 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 - 详情展示完整正文（不是摘要、也不再限制在固定高度的小框里），按 Markdown 渲染并过滤危险 HTML。
 - 默认交接提示词把 Issue 元信息排成 Markdown 表格，发送后在对话里会渲染成真正的表格；旧版没有表格的
   提示词会在加载时自动升级一次，也可以在设置里点「恢复默认」重新套用。
-- 卡片标记末尾带一个普通空格，所以卡片后面输入 `/命令` 或 skill 引用仍能进入输入触发管线；发送后保留
-  可点击的 Issue chip，输入框卡片和消息里的 chip 都会打开 Issue 网址。
+- 卡片标记是一个 hair space（Unicode 空白字符）：卡片后面输入 `/命令` 或 `@引用` 时前面天然有空白，
+  输入触发管线和命令的 leading guard 都能工作；因为它本身是空白，也不会在打字时累积成可见缩进。
+  输入框卡片和发送后的消息卡片都会打开 Issue 网址。
 - 里程碑的可选项来自当前仓库的完整里程碑列表（含已关闭）。
 - 优先级回退顺序：组织 Issue Field → `P0`–`P4` 标签（不再读取 Projects v2 项目字段）。
 - 列表可见时每 60–120 秒轮询一次；需要立刻更新点「刷新」。

@@ -18,6 +18,8 @@ worked in several Sessions.
 
 ![The pending issue card inside the composer](assets/pending.png)
 
+![The issue card in a sent message](assets/message-card.png)
+
 It is **read-only**: the plugin never writes to GitHub.
 
 ## Install
@@ -66,7 +68,7 @@ tarball (`dsh-plugin-github-issues.tgz`), installable by path.
 | GitHub panel | left rail icon → main panel | organization → repository → **milestone** → assignee → state cascade (remembered across restarts) in one fixed toolbar; a default organization/repository is selected for you, the milestone dropdown lists only that repository's milestones, and only the list scrolls (search stays above it, the detail pane scrolls independently with the **full issue body rendered as sanitized GitHub-flavored Markdown**, milestone progress, labels, priority, assignees, linked/mentioned PRs and checks) |
 | Issues right column | right sidebar tab | the same filtered issue list beside the Conversation, for drag-and-drop handoff |
 | Composer card | inside the input box, above the editor | the staged issue as a draft-attachment-style card (240×64, GitHub glyph, `owner/repo#number`, state + title, hover-only remove). The card is not editable; it keeps its own space above the editor, survives a Workspace switch together with the draft, opens the issue URL when clicked, and is converted into the issue prompt on send |
-| Sent issue reference | in a sent user message | the prompt names the issue as `owner/repo#number`; the conversation renders that token as a clickable GitHub chip, and the metadata stays a Markdown table |
+| Sent issue card | in a sent user message | the prompt's `处理 GitHub Issue：owner/repo#number title` heading is rendered as the same clickable 240×64 issue card (state + title), and the metadata stays a Markdown table |
 | Linked chip | composer dock under the input | the Session's linked issue: state dot (green open / red closed) + `owner/repo#number`; the dot refreshes from GitHub on panel refresh, every poll, window focus and whenever the issue appears in the list; click for a detail popover, remove to unlink |
 | Handoff actions | issue detail | one-click **enter Session** (latest link), **new Session for this issue**, plus a linked-Session list with per-Session enter/unlink |
 | GitHub settings | Settings → GitHub | `gh` auth status and scopes, handoff behavior, prompt template |
@@ -124,9 +126,10 @@ Settings → GitHub → Prompt template. Variables: `{{repo}}`, `{{number}}`, `{
 - The default handoff prompt renders its issue metadata as a Markdown table, so it survives as a real
   table in the transcript after sending. Legacy pre-table prompts are upgraded once on load; **Reset
   to default** in Settings restores this template.
-- The card marker ends with a normal space, so typing `/command` or a skill reference after the card
-  still reaches the input trigger pipeline; the sent message keeps a clickable issue chip and both the
-  composer card and the sent chip open the issue on GitHub.
+- The card marker is a single hair space (Unicode whitespace): `/command` or an `@reference` typed
+  after the card is preceded by whitespace, so the input trigger pipeline (and the command's leading
+  guard) works. Because it is whitespace, it also cannot accumulate into visible indentation while
+  typing. Both the composer card and the sent-message card open the issue URL.
 - Milestone choices come from the selected repository's full milestone list (open and closed).
 - Priority falls back organization Issue Field → `P0`–`P4` labels when no project field is present.
 - The list polls every 60–120 s while visible; use **Refresh** for an immediate update.
