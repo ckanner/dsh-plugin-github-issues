@@ -5,8 +5,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { composeHandoffPrompt, EMPTY_DRAFT_HOLD, renderPrompt } from '../src/prompt.ts'
-import { DEFAULT_PROMPT_TEMPLATE, type IssueCardVM } from '../src/vm.ts'
+import { composeHandoffPrompt, EMPTY_DRAFT_HOLD, PENDING_DRAFT_SENTINEL, renderPrompt } from '../src/prompt.ts'
+import { DEFAULT_PROMPT_TEMPLATE, mergePrefs, migratePromptTemplate, type IssueCardVM } from '../src/vm.ts'
 
 /** One field override; `undefined` is meaningful (it removes the value). */
 type Overrides = { [K in keyof IssueCardVM]?: IssueCardVM[K] | undefined }
@@ -95,6 +95,34 @@ test('an oversized prompt is truncated with a marker', () => {
   const huge = renderPrompt(card(), `${'x'.repeat(9_000)}{{title}}`)
   assert.ok(huge.length <= 8_000, `expected <= 8000 chars, got ${String(huge.length)}`)
   assert.match(huge, /已截断/)
+})
+
+test('the legacy prompt shape migrates to the table template', () => {
+  const legacy = '处理 GitHub Issue：{{repo}}#{{number}} {{title}}\n链接：{{url}}\n状态：{{state}} ｜ 里程碑：{{milestone}}\n标签：{{labels}}'
+  assert.equal(migratePromptTemplate(legacy), DEFAULT_PROMPT_TEMPLATE)
+  const custom = '只处理 {{repo}}#{{number}}，状态：{{state}}'
+  assert.equal(migratePromptTemplate(custom), custom)
+  assert.equal(migratePromptTemplate(undefined), undefined)
+  assert.equal(mergePrefs({ promptTemplate: legacy }, 'draft', undefined).promptTemplate, DEFAULT_PROMPT_TEMPLATE)
+})
+
+test('the default template is a Markdown table that survives rendering', () => {
+  const text = renderPrompt(card(), '')
+  assert.match(text, /^\| 字段 \| 值 \|$/m)
+  assert.match(text, /^\| 状态 \| Open \|$/m)
+  assert.match(text, /^\| 里程碑 \| v2\.1, due 2026-11-02, 82\.6% \|$/m)
+  assert.match(text, /^\| 标签 \| P1, status\/in-progress \|$/m)
+  assert.ok(text.includes('| --- | --- |'))
+})
+
+test('the pending sentinel is invisible and never reaches the prompt', () => {
+  assert.ok(PENDING_DRAFT_SENTINEL.length > 0)
+  for (const char of PENDING_DRAFT_SENTINEL) {
+    assert.ok(/[\u200b-\u200f\u2060-\u206f\ufeff]/.test(char), `sentinel contains a visible character: ${JSON.stringify(char)}`)
+  }
+  const composed = composeHandoffPrompt('PROMPT', `${PENDING_DRAFT_SENTINEL}还有几句话`)
+  assert.equal(composed, 'PROMPT\n\n还有几句话')
+  assert.equal(composeHandoffPrompt('PROMPT', PENDING_DRAFT_SENTINEL), 'PROMPT')
 })
 
 test('an empty template falls back to the built-in one', () => {

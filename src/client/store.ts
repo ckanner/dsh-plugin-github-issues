@@ -717,12 +717,14 @@ export class GitHubStore implements PanelActions {
     // conversation on screen. Resolve the blank Session first so the pending
     // chip can be stamped with its id; only that Session's composer consumes it.
     const workspaceId = this.workspaceForHandoff(card.repo)
-    const prompt = this.promptFor(card)
     void (async () => {
       try {
         const sessionId = await uiWorkspace.connectWorkspace(workspaceId)
+        // The card itself is the draft: the overlay writes the invisible sentinel
+        // once the new Session's composer mounts, so a Workspace switch carries
+        // the marker (and therefore the card) with the transferred draft.
         this.update({ pendingHandoff: card, pendingHandoffSession: sessionId })
-        uiWorkspace.startSession(workspaceId, { prompt, whenDraftExists: 'replace' })
+        uiWorkspace.startSession(workspaceId, { whenDraftExists: 'replace' })
       } catch (error) {
         this.update({ error: asPanelError(error) })
       }
@@ -956,6 +958,10 @@ export class GitHubStore implements PanelActions {
 
   /**
    * Take the pending handoff when it belongs to this Session.
+   *
+   * This is non-destructive: the card stays in the store until it is sent or
+   * explicitly removed, so a composer remount (Workspace switch, Session
+   * transfer) can recover it from the draft sentinel.
    * @param sessionId - the Session whose dock asks; a handoff stamped for a
    * different Session is left for that one.
    * @returns the issue to stage, or `undefined`.
@@ -965,8 +971,13 @@ export class GitHubStore implements PanelActions {
     if (card === undefined) return undefined
     const target = this.snapshot.pendingHandoffSession
     if (target !== undefined && sessionId !== undefined && target !== sessionId) return undefined
-    this.update({ pendingHandoff: undefined, pendingHandoffSession: undefined })
     return card
+  }
+
+  /** Drop the staged card once it was sent or explicitly removed. */
+  clearPendingHandoff(): void {
+    if (this.snapshot.pendingHandoff === undefined && this.snapshot.pendingHandoffSession === undefined) return
+    this.update({ pendingHandoff: undefined, pendingHandoffSession: undefined })
   }
 
   /** Render the profile's handoff prompt for one issue. */

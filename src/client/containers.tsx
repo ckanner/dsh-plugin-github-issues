@@ -17,12 +17,12 @@ import type {
 } from './context.ts'
 import type { GitHubStore } from './store.ts'
 import type { IssueCardVM, IssueLinkRecord } from '../vm.ts'
-import { composeHandoffPrompt, EMPTY_DRAFT_HOLD } from '../prompt.ts'
+import { composeHandoffPrompt, PENDING_DRAFT_SENTINEL } from '../prompt.ts'
 import type { ComposerIssueChip, SessionLinkView } from './viewmodel.ts'
 import { GitHubDock } from './views/Dock.tsx'
 import { GitHubDropZone } from './views/DropZone.tsx'
 import { GitHubIcon } from './views/Icon.tsx'
-import { GitHubPendingChip } from './views/Pending.tsx'
+import { GitHubPendingCard } from './views/Pending.tsx'
 import { GitHubPage } from './views/Page.tsx'
 import { GitHubSettings } from './views/Settings.tsx'
 import { GitHubSidebar } from './views/Sidebar.tsx'
@@ -165,89 +165,87 @@ export function DockHost({ store, t, runtime, sessionId }: ContainerProps & Sess
 }
 
 /**
- * The pending handoff chip inside the composer card (`conversation.input.overlay`).
+ * The pending handoff card inside the composer card (`conversation.input.overlay`).
  *
- * The card carries the issue; the input stays empty for the user's own words. On
- * send (the native submit button or Enter) this component intercepts the gesture,
- * turns the card into the rendered issue prompt, appends whatever the user typed,
- * and submits that. Clearing the input withdraws the card without linking; the
- * link is recorded only after the send is observed.
+ * The card *is* the draft: an invisible sentinel lives in the draft so the native
+ * send stays enabled, DSH's Workspace/Session transfer carries the card along with
+ * the draft, and a remounted composer can recover the card from the store. On a
+ * send gesture this component turns the card into the rendered issue prompt,
+ * appends whatever the user typed, and submits it; the link is recorded only after
+ * the draft is observed cleared.
  */
 export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions }: Omit<ContainerProps, 'runtime'> & { runtime?: ClientRuntime } & SessionKit) {
   const snapshot = usePanel(store)
   const [pending, setPending] = useState<IssueCardVM | undefined>(undefined)
-  /** The marker was in the draft at least once (the prompt was actually written). */
-  const markerSeen = useRef(false)
-  /** The composer left `plain` while the marker was present: a send, not a manual clear. */
-  const submitSeen = useRef(false)
   /** Guard against a double interception while the prepared draft is being submitted. */
   const sending = useRef(false)
-  const marker = pending === undefined ? '' : `${pending.repo}#${String(pending.number)}`
+  /** The session+card already staged, so a user-deleted marker is not re-added. */
+  const stagedFor = useRef<string | undefined>(undefined)
   const input = useInput === undefined ? undefined : useInput(state => state)
   const latestInput = useRef(input)
   latestInput.current = input
+  const draft = input?.draft ?? ''
+  const card = snapshot.pendingHandoff
 
-  // The handoff stamped for this Session: stage it inside the composer once.
+  // Recover the card from the store (fresh handoff) or from the sentinel that
+  // DSH transfers with the draft when the composer switches Workspace.
   useEffect(() => {
-    const card = store.consumeHandoff(sessionId)
-    if (card === undefined) return
-    markerSeen.current = false
-    submitSeen.current = false
-    sending.current = false
+    if (card === undefined) {
+      setPending(undefined)
+      return
+    }
+    if (draft.includes(PENDING_DRAFT_SENTINEL)) {
+      if (pending?.id !== card.id) setPending(card)
+      return
+    }
+    const target = snapshot.pendingHandoffSession
+    if (target !== undefined && sessionId !== undefined && target !== sessionId) return
+    const key = `${sessionId ?? 'no-session'}:${card.id}`
+    if (stagedFor.current === key) return
+    stagedFor.current = key
     setPending(card)
-    if (inputActions !== undefined) inputActions.setDraft(EMPTY_DRAFT_HOLD)
-  }, [snapshot.pendingHandoff, snapshot.pendingHandoffSession, inputActions, sessionId, store])
+    if (inputActions !== undefined) {
+      inputActions.setDraft(draft === '' ? PENDING_DRAFT_SENTINEL : `${PENDING_DRAFT_SENTINEL}${draft}`)
+    }
+  }, [card, draft, inputActions, pending?.id, sessionId, snapshot.pendingHandoffSession])
 
-  // Link only on an observed send; an emptied draft withdraws the pending card.
+  // Withdraw the card locally when the invisible marker disappears (manual edit
+  // or clear). The store keeps the card so a transferred draft can recover it.
   useEffect(() => {
-    if (pending === undefined || input === undefined || sessionId === undefined) return
-    const text = input.draft
-    if (text.includes(marker)) {
-      markerSeen.current = true
-      if (input.phase !== 'plain') submitSeen.current = true
-    }
-    if (markerSeen.current && submitSeen.current) {
-      void store.linkIssue(pending, sessionId)
-      setPending(undefined)
-      markerSeen.current = false
-      submitSeen.current = false
-      sending.current = false
-      return
-    }
-    if (text === '') {
-      // The user emptied the composer: withdraw the card, link nothing.
-      setPending(undefined)
-      markerSeen.current = false
-      submitSeen.current = false
-      sending.current = false
-      return
-    }
-    if (markerSeen.current && !text.includes(marker)) {
-      setPending(undefined)
-      markerSeen.current = false
-      submitSeen.current = false
-      sending.current = false
-    }
-  }, [input, pending, marker, sessionId, store])
+    if (pending === undefined) return
+    if (!draft.includes(PENDING_DRAFT_SENTINEL)) setPending(undefined)
+  }, [draft, pending])
+
+  // The card overlays the top of the composer card: reserve its height so text
+  // and caret can never land on top of it. Restore the exact prior style on exit.
+  useEffect(() => {
+    if (pending === undefined) return
+    const anchor = document.querySelector('[data-github-pending]')
+    const composerCard = anchor?.closest('[data-composer-card]')
+    if (!(composerCard instanceof HTMLElement)) return
+    const previous = composerCard.style.paddingTop
+    composerCard.style.paddingTop = '84px'
+    return () => { composerCard.style.paddingTop = previous }
+  }, [pending])
 
   // The card is not text yet: intercept the native send gesture and compose.
   useEffect(() => {
     if (pending === undefined || inputActions === undefined) return
     const composerCard = (): HTMLElement | null => {
-      const chip = document.querySelector('[data-github-pending]')
-      const anchor = chip?.closest('[data-composer-overlay]')
-      return anchor?.parentElement ?? null
+      const anchor = document.querySelector('[data-github-pending]')
+      return anchor?.closest('[data-composer-card]') ?? null
     }
-    const submitButton = (card: HTMLElement): Element | undefined => {
-      const buttons = [...card.querySelectorAll('button')]
+    const submitButton = (cardEl: HTMLElement): Element | undefined => {
+      const buttons = [...cardEl.querySelectorAll('button')]
       return buttons.find(button => /_primary(\s|$)/.test(String(button.className)))
         ?? buttons[buttons.length - 1]
     }
     const send = (): void => {
       if (sending.current) return
       sending.current = true
-      const card = pending
-      const composed = composeHandoffPrompt(store.promptFor(card), latestInput.current?.draft ?? '')
+      const currentCard = pending
+      const memo = latestInput.current?.draft ?? ''
+      const composed = composeHandoffPrompt(store.promptFor(currentCard), memo)
       inputActions.setDraft(composed)
       // Let the draft commit, submit, then confirm: a successful send clears the
       // draft. Recording the link from that result does not depend on catching a
@@ -256,35 +254,37 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
         inputActions.submit()
         window.setTimeout(() => {
           const after = latestInput.current?.draft ?? ''
-          const cleared = !after.includes(`${card.repo}#${String(card.number)}`)
-          if (!cleared) {
+          if (after.trim() !== '') {
+            // Refused or not yet committed: put the card and the user's words back.
+            const restore = memo === '' ? PENDING_DRAFT_SENTINEL : memo
+            if (!restore.includes(PENDING_DRAFT_SENTINEL)) inputActions.setDraft(PENDING_DRAFT_SENTINEL)
+            else inputActions.setDraft(restore)
             sending.current = false
             return
           }
-          if (sessionId !== undefined) void store.linkIssue(card, sessionId)
+          if (sessionId !== undefined) void store.linkIssue(currentCard, sessionId)
+          store.clearPendingHandoff()
           setPending(undefined)
-          markerSeen.current = false
-          submitSeen.current = false
           sending.current = false
         }, 700)
       }, 16)
     }
     const onClick = (event: MouseEvent): void => {
-      const card = composerCard()
-      if (card === null) return
+      const cardEl = composerCard()
+      if (cardEl === null) return
       const button = (event.target as Element | null)?.closest('button')
       if (button === null || button === undefined || button.closest('[data-github-pending]') !== null) return
-      if (button !== submitButton(card)) return
+      if (button !== submitButton(cardEl)) return
       event.preventDefault()
       event.stopImmediatePropagation()
       send()
     }
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
-      const card = composerCard()
-      if (card === null) return
+      const cardEl = composerCard()
+      if (cardEl === null) return
       const target = event.target as Element | null
-      if (target === null || !card.contains(target) || target.closest('[data-github-pending]') !== null) return
+      if (target === null || !cardEl.contains(target) || target.closest('[data-github-pending]') !== null) return
       event.preventDefault()
       event.stopImmediatePropagation()
       send()
@@ -295,20 +295,18 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [pending, inputActions, store])
+  }, [pending, inputActions, store, sessionId])
 
   if (pending === undefined) return null
   return (
-    <GitHubPendingChip
+    <GitHubPendingCard
       card={pending}
       t={t}
       onOpenPanel={() => store.openInPanel(pending)}
       onRemove={() => {
-        setPending(undefined)
-        markerSeen.current = false
-        submitSeen.current = false
-        sending.current = false
         inputActions?.setDraft('')
+        setPending(undefined)
+        store.clearPendingHandoff()
       }}
     />
   )

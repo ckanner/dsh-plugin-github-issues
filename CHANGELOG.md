@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.0 (2026-10-29)
+
+- The pending handoff now looks like DSH's own draft attachment: a 240×64
+  rounded card with the GitHub glyph, `owner/repo#number`, state + title, and a
+  hover-only remove control. It is no longer a small pill floating over the
+  editor: the composer reserves the card's height, so the caret and typed text
+  can never land on top of it, and the card itself is not editable.
+- Switching Workspace no longer loses the card. The card lives in an invisible
+  draft sentinel (`U+2063` + zero-width space), which DSH transfers with the
+  draft to the new Session; the remounted composer recovers the card from the
+  store. The card is cleared only on send, explicit remove, or a new handoff.
+- The default handoff prompt now uses a Markdown metadata table, so the prompt
+  renders as a real table in the transcript. Pre-table prompts of the old shape
+  are migrated once on load; Settings' Reset to default applies the new template.
+- Added render-smoke coverage for the pending card and unit coverage for the
+  sentinel and prompt migration.
+
 ## 0.7.1 (2026-10-29)
 
 - The composer dock's linked-issue chip now refreshes its card from GitHub: a new

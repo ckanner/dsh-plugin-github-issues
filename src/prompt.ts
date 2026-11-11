@@ -72,8 +72,20 @@ export function renderPrompt(issue: PromptIssue, template: string): string {
   return text
 }
 
-/** The invisible draft placeholder that keeps the native send enabled. */
-export const EMPTY_DRAFT_HOLD = '\u200b\n'
+/**
+ * The invisible draft marker that keeps the native send enabled and lets the
+ * pending card survive a Session/Workspace transfer.
+ *
+ * DSH transfers the draft text when the composer switches Workspace, so keeping
+ * this marker in the draft is what lets the new Session's composer find the card
+ * again. `U+2063` (invisible separator) plus a zero-width space is invisible and
+ * non-whitespace, so the composer treats the draft as occupied without showing
+ * characters.
+ */
+export const PENDING_DRAFT_SENTINEL = '\u2063\u200b'
+
+/** Backwards-compatible name for the marker the old overlay used. */
+export const EMPTY_DRAFT_HOLD = PENDING_DRAFT_SENTINEL
 
 /**
  * Compose the message a pending issue card sends.
@@ -86,6 +98,10 @@ export const EMPTY_DRAFT_HOLD = '\u200b\n'
  * @returns the text to submit.
  */
 export function composeHandoffPrompt(prompt: string, memo: string): string {
-  const extra = memo.replace(/\u200b/g, '').replace(/^\n+/, '').trim()
+  const extra = memo
+    .split(PENDING_DRAFT_SENTINEL).join('')
+    .replace(/[\u200b\u200c\u200d\u2060\ufeff]/g, '')
+    .replace(/^\n+/, '')
+    .trim()
   return extra === '' ? prompt : `${prompt}\n\n${extra}`
 }

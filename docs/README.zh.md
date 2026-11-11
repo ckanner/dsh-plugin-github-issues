@@ -13,6 +13,8 @@ Issue 可以关联多个 Session。
 
 ![GitHub 面板：固定筛选栏 + 独立滚动的详情栏](../assets/panel.png)
 
+![输入框里的待发送 Issue 卡片](../assets/pending.png)
+
 插件对 GitHub **只读**，不会写入任何内容。
 
 ## 安装
@@ -103,6 +105,8 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 - 列表使用仓库的 `issues` 连接，状态、assignee、里程碑都由 GitHub 服务端过滤（总数也是权威的）；
   里程碑通过 `filterBy.milestoneNumber` 按编号过滤。
 - 详情展示完整正文（不是摘要、也不再限制在固定高度的小框里），按 Markdown 渲染并过滤危险 HTML。
+- 默认交接提示词把 Issue 元信息排成 Markdown 表格，发送后在对话里会渲染成真正的表格；旧版没有表格的
+  提示词会在加载时自动升级一次，也可以在设置里点「恢复默认」重新套用。
 - 里程碑的可选项来自当前仓库的完整里程碑列表（含已关闭）。
 - 优先级回退顺序：组织 Issue Field → `P0`–`P4` 标签（不再读取 Projects v2 项目字段）。
 - 列表可见时每 60–120 秒轮询一次；需要立刻更新点「刷新」。

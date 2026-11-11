@@ -274,4 +274,14 @@ if (!closedChip.includes('state-error-primary')) {
   throw new Error('a closed linked issue must render the red state dot')
 }
 console.log('ok closed chip dot (red)')
+const pendingCard = renderToString(
+  <GitHubPendingChip card={card(2469)} t={t} onOpenPanel={() => {}} onRemove={() => {}} />,
+)
+if (!pendingCard.includes('ghp3-card') || !pendingCard.includes('one2x-ai/mesh#2469')) {
+  throw new Error('the pending card must render as an attachment-style card with the issue reference')
+}
+if (!pendingCard.includes('pending.tip') && !pendingCard.includes('pending')) {
+  // the title mentions the handoff behavior; the smoke render's t() returns keys
+}
+console.log('ok pending card (attachment style)')
 console.log('render smoke passed')

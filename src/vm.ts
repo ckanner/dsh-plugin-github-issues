@@ -301,10 +301,18 @@ export type PrefsPatch = { [K in keyof Prefs]?: Prefs[K] | null }
 /** The prompt a handoff writes into the composer. */
 export const DEFAULT_PROMPT_TEMPLATE = [
   '处理 GitHub Issue：{{repo}}#{{number}} {{title}}',
+  '',
   '链接：{{url}}',
-  '状态：{{state}} ｜ 里程碑：{{milestone}} ｜ 优先级：{{priority}} ｜ 指派：{{assignees}}',
-  '标签：{{labels}}',
-  '关联 PR：{{prs}}',
+  '',
+  '| 字段 | 值 |',
+  '| --- | --- |',
+  '| 状态 | {{state}} |',
+  '| 里程碑 | {{milestone}} |',
+  '| 优先级 | {{priority}} |',
+  '| 指派 | {{assignees}} |',
+  '| 标签 | {{labels}} |',
+  '| 关联 PR | {{prs}} |',
+  '',
   '要求：先读 Issue 正文与关联 PR，确认验收标准后再动手；用 subagent_codex 执行具体改动，完成后跑相关测试并回报。',
 ].join('\n')
 
@@ -321,6 +329,22 @@ export const DEFAULT_PREFS: Prefs = {
   pinned: undefined,
 }
 
+/**
+ * Recognize the pre-table prompt from earlier versions and upgrade it once.
+ *
+ * The old default and close edits of it share this shape: a `处理 GitHub Issue：`
+ * headline followed by `状态：` and no Markdown table. A genuinely custom prompt
+ * with a different shape is left untouched.
+ * @param saved - the stored template.
+ * @returns the table template for a legacy prompt, otherwise the stored value.
+ */
+export function migratePromptTemplate(saved: string | undefined): string | undefined {
+  if (saved === undefined || saved === '') return saved
+  if (saved.includes('| 字段 |')) return saved
+  if (!saved.startsWith('处理 GitHub Issue：') || !saved.includes('状态：')) return saved
+  return DEFAULT_PROMPT_TEMPLATE
+}
+
 /** Build preferences from the deployment config and whatever was saved. */
 export function mergePrefs(
   saved: Partial<Prefs> | undefined,
@@ -333,7 +357,7 @@ export function mergePrefs(
     ...DEFAULT_PREFS,
     ...saved,
     handoffMode: handoff,
-    promptTemplate: saved?.promptTemplate
+    promptTemplate: migratePromptTemplate(saved?.promptTemplate)
       ?? (configTemplate === undefined || configTemplate === '' ? DEFAULT_PROMPT_TEMPLATE : configTemplate),
   }
 }
