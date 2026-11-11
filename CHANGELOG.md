@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.5 (2026-10-29)
+
+- Updated the default handoff prompt to the requested wording: the requirement
+  line is now `要求：先读 Issue 正文与关联 PR，确认验收标准后再动手，完成后跑相关测试并回报。`
+  (the old `用 subagent_codex 执行具体改动` sentence is gone).
+- Migration also upgrades the previous table default and its requirement-less
+  edit to the new template, so existing profiles see the new prompt without
+  manually resetting; a table prompt with a different requirement is preserved.
+
 ## 0.8.4 (2026-10-29)
 
 - The sent-message card matcher now accepts the whitespace handoff marker before

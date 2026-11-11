@@ -58,7 +58,7 @@ test('the default template renders every placeholder', () => {
   assert.match(text, /ckanner/)
   assert.match(text, /P1, status\/in-progress/)
   assert.match(text, /#2527 \(merged, checks success\)/)
-  assert.match(text, /subagent_codex/)
+  assert.match(text, /确认验收标准后再动手，完成后跑相关测试并回报。/)
 })
 
 test('a custom template replaces only its own placeholders', () => {
@@ -104,6 +104,30 @@ test('the legacy prompt shape migrates to the table template', () => {
   assert.equal(migratePromptTemplate(custom), custom)
   assert.equal(migratePromptTemplate(undefined), undefined)
   assert.equal(mergePrefs({ promptTemplate: legacy }, 'draft', undefined).promptTemplate, DEFAULT_PROMPT_TEMPLATE)
+})
+
+test('the previous table template and its requirement-less edit migrate too', () => {
+  const previousTable = [
+    '处理 GitHub Issue：{{repo}}#{{number}} {{title}}',
+    '',
+    '链接：{{url}}',
+    '',
+    '| 字段 | 值 |',
+    '| --- | --- |',
+    '| 状态 | {{state}} |',
+    '| 里程碑 | {{milestone}} |',
+    '| 优先级 | {{priority}} |',
+    '| 指派 | {{assignees}} |',
+    '| 标签 | {{labels}} |',
+    '| 关联 PR | {{prs}} |',
+    '',
+    '要求：先读 Issue 正文与关联 PR，确认验收标准后再动手；用 subagent_codex 执行具体改动，完成后跑相关测试并回报。',
+  ].join('\n')
+  assert.equal(migratePromptTemplate(previousTable), DEFAULT_PROMPT_TEMPLATE)
+  const withoutRequirement = previousTable.slice(0, previousTable.indexOf('\n\n要求：'))
+  assert.equal(migratePromptTemplate(withoutRequirement), DEFAULT_PROMPT_TEMPLATE)
+  const custom = `${DEFAULT_PROMPT_TEMPLATE}\n\n额外要求：只读。`
+  assert.equal(migratePromptTemplate(custom), custom)
 })
 
 test('the default template is a Markdown table that survives rendering', () => {

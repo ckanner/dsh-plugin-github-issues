@@ -313,8 +313,27 @@ export const DEFAULT_PROMPT_TEMPLATE = [
   '| 标签 | {{labels}} |',
   '| 关联 PR | {{prs}} |',
   '',
-  '要求：先读 Issue 正文与关联 PR，确认验收标准后再动手；用 subagent_codex 执行具体改动，完成后跑相关测试并回报。',
+  '要求：先读 Issue 正文与关联 PR，确认验收标准后再动手，完成后跑相关测试并回报。',
 ].join('\n')
+
+/** The table block every previous default prompt shared. */
+const TABLE_PROMPT_PREFIX = [
+  '处理 GitHub Issue：{{repo}}#{{number}} {{title}}',
+  '',
+  '链接：{{url}}',
+  '',
+  '| 字段 | 值 |',
+  '| --- | --- |',
+  '| 状态 | {{state}} |',
+  '| 里程碑 | {{milestone}} |',
+  '| 优先级 | {{priority}} |',
+  '| 指派 | {{assignees}} |',
+  '| 标签 | {{labels}} |',
+  '| 关联 PR | {{prs}} |',
+].join('\n')
+
+/** The requirement sentence bundled with the first table template. */
+const LEGACY_REQUIREMENT = '要求：先读 Issue 正文与关联 PR，确认验收标准后再动手；用 subagent_codex 执行具体改动，完成后跑相关测试并回报。'
 
 /** Default preferences for a fresh install: everything assigned to me that is open. */
 export const DEFAULT_PREFS: Prefs = {
@@ -340,6 +359,13 @@ export const DEFAULT_PREFS: Prefs = {
  */
 export function migratePromptTemplate(saved: string | undefined): string | undefined {
   if (saved === undefined || saved === '') return saved
+  if (saved === DEFAULT_PROMPT_TEMPLATE) return saved
+  if (saved.includes(TABLE_PROMPT_PREFIX)) {
+    // Previous table defaults: the old requirement sentence, or a table prompt
+    // whose requirement row the user removed.
+    if (saved.includes(LEGACY_REQUIREMENT) || !saved.includes('要求：')) return DEFAULT_PROMPT_TEMPLATE
+    return saved
+  }
   if (saved.includes('| 字段 |')) return saved
   if (!saved.startsWith('处理 GitHub Issue：') || !saved.includes('状态：')) return saved
   return DEFAULT_PROMPT_TEMPLATE
