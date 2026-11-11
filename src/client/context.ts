@@ -21,6 +21,8 @@ export interface SlotRegistrationOptions {
   id?: string
   /** Sort position within the slot. */
   order?: number
+  /** Replacement priority for a cell a keyed/single slot already has. */
+  priority?: number
   /** Label the owner may render beside the cell. */
   label?: string | (() => string)
   /** Locale namespace this entry's text belongs to. */

@@ -136,6 +136,7 @@ const namespace = {
 
 const injectCalls = []
 const tabTypes = []
+const userTextRules = []
 const ctx = {
   remote: {
     $mount(contribution) {
@@ -177,6 +178,14 @@ const ctx = {
           return () => {}
         },
       },
+      uiConversation: {
+        userText: {
+          register(rule) {
+            userTextRules.push(rule)
+            return () => {}
+          },
+        },
+      },
     }
     callback(scoped)
   },
@@ -197,12 +206,14 @@ assert.deepEqual(
     'settings.section:github-issues',
     'conversation.input.overlay:github-issues-pending',
     'conversation.input.dock:github-issues-drop',
+    'conversation.user.text.node:github-issue',
     'sidebar.right.pane.tab:github-issues',
   ],
   'the bundle must contribute the panel page, rail icon, chip row, settings section, input dock, and right-sidebar page',
 )
 
-assert.deepEqual(injectCalls, [['sidebarRightTabs']], 'the right-sidebar page must wait for its optional service')
+assert.deepEqual(injectCalls, [['uiConversation'], ['sidebarRightTabs']], 'dynamic services must be declared before use')
+assert.deepEqual(userTextRules.map(rule => `${rule.id}:${String(rule.order)}`), ['github-issue:40'], 'sent-text rule must be registered')
 assert.deepEqual(tabTypes.map(type => `${type.id}:${type.kind}`), ['github-issues:github-issues'])
 assert.equal(tabTypes[0].guide.length, 1, 'the right-sidebar page needs one guide entry to be openable')
 

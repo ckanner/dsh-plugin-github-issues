@@ -82,7 +82,7 @@ export function renderPrompt(issue: PromptIssue, template: string): string {
  * non-whitespace, so the composer treats the draft as occupied without showing
  * characters.
  */
-export const PENDING_DRAFT_SENTINEL = '\u2063\u200b'
+export const PENDING_DRAFT_SENTINEL = '\u2063\u200b '
 
 /** Backwards-compatible name for the marker the old overlay used. */
 export const EMPTY_DRAFT_HOLD = PENDING_DRAFT_SENTINEL
@@ -100,7 +100,7 @@ export const EMPTY_DRAFT_HOLD = PENDING_DRAFT_SENTINEL
 export function composeHandoffPrompt(prompt: string, memo: string): string {
   const extra = memo
     .split(PENDING_DRAFT_SENTINEL).join('')
-    .replace(/[\u200b\u200c\u200d\u2060\ufeff]/g, '')
+    .replace(/[\u200b\u200c\u200d\u2060\u2063\ufeff]/g, '')
     .replace(/^\n+/, '')
     .trim()
   return extra === '' ? prompt : `${prompt}\n\n${extra}`

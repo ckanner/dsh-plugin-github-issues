@@ -322,7 +322,6 @@ export function PendingOverlayHost({ store, t, sessionId, useInput, inputActions
     <GitHubPendingCard
       card={pending}
       t={t}
-      onOpenPanel={() => store.openInPanel(pending)}
       onRemove={() => {
         inputActions?.setDraft('')
         setPending(undefined)

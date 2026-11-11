@@ -18,6 +18,7 @@ import { GitHubIcon } from '../src/client/views/Icon.tsx'
 import { GitHubDropZone } from '../src/client/views/DropZone.tsx'
 import { GitHubPage } from '../src/client/views/Page.tsx'
 import { GitHubPendingChip } from '../src/client/views/Pending.tsx'
+import { GitHubIssueReference } from '../src/client/views/IssueReference.tsx'
 import { GitHubSettings } from '../src/client/views/Settings.tsx'
 import { GitHubSidebar } from '../src/client/views/Sidebar.tsx'
 import type { PanelActions, PanelSnapshot } from '../src/client/viewmodel.ts'
@@ -275,7 +276,7 @@ if (!closedChip.includes('state-error-primary')) {
 }
 console.log('ok closed chip dot (red)')
 const pendingCard = renderToString(
-  <GitHubPendingChip card={card(2469)} t={t} onOpenPanel={() => {}} onRemove={() => {}} />,
+  <GitHubPendingChip card={card(2469)} t={t} onRemove={() => {}} />,
 )
 if (!pendingCard.includes('ghp3-card') || !pendingCard.includes('one2x-ai/mesh#2469')) {
   throw new Error('the pending card must render as an attachment-style card with the issue reference')
@@ -284,4 +285,14 @@ if (!pendingCard.includes('pending.tip') && !pendingCard.includes('pending')) {
   // the title mentions the handoff behavior; the smoke render's t() returns keys
 }
 console.log('ok pending card (attachment style)')
+const issueRef = renderToString(
+  <GitHubIssueReference
+    node={{ data: { repo: 'one2x-ai/mesh', number: 2469, url: 'https://github.com/one2x-ai/mesh/issues/2469' } }}
+    raw="one2x-ai/mesh#2469"
+  />,
+)
+if (!issueRef.includes('https://github.com/one2x-ai/mesh/issues/2469')) {
+  throw new Error('the sent-text issue reference must link to the issue URL')
+}
+console.log('ok sent-text issue reference (link)')
 console.log('render smoke passed')

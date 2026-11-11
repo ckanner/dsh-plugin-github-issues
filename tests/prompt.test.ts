@@ -118,7 +118,8 @@ test('the default template is a Markdown table that survives rendering', () => {
 test('the pending sentinel is invisible and never reaches the prompt', () => {
   assert.ok(PENDING_DRAFT_SENTINEL.length > 0)
   for (const char of PENDING_DRAFT_SENTINEL) {
-    assert.ok(/[\u200b-\u200f\u2060-\u206f\ufeff]/.test(char), `sentinel contains a visible character: ${JSON.stringify(char)}`)
+    const invisible = /[\u200b-\u200f\u2060-\u206f\ufeff]/.test(char) || /\s/u.test(char)
+    assert.ok(invisible, `sentinel contains a visible character: ${JSON.stringify(char)}`)
   }
   const composed = composeHandoffPrompt('PROMPT', `${PENDING_DRAFT_SENTINEL}还有几句话`)
   assert.equal(composed, 'PROMPT\n\n还有几句话')

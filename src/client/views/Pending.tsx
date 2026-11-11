@@ -20,9 +20,10 @@ import { CONTROLS_CSS, StyleSheet } from './controls.tsx'
 /** The stylesheet chunk owned by the in-composer pending card. */
 export const PENDING_CSS = `
 .ghp3-rail{position:absolute;top:8px;left:10px;right:10px;z-index:2;display:flex;align-items:flex-start;pointer-events:none}
-.ghp3-card{pointer-events:auto;position:relative;display:inline-flex;align-items:center;gap:10px;box-sizing:border-box;width:240px;max-width:100%;height:64px;padding:0 12px;border:0.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-specific-input-major,var(--dsw-alias-bg-base));color:var(--dsw-alias-label-primary);text-align:left;font-family:inherit;cursor:pointer}
+.ghp3-card{pointer-events:auto;position:relative;display:inline-flex;align-items:center;box-sizing:border-box;width:240px;max-width:100%;height:64px;border:0.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-specific-input-major,var(--dsw-alias-bg-base));color:var(--dsw-alias-label-primary);text-align:left;font-family:inherit}
 .ghp3-card:hover{border-color:var(--dsw-alias-border-l3,rgba(0,0,0,.18))}
-.ghp3-card:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}
+.ghp3-card:focus-within{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}
+.ghp3-link{display:inline-flex;align-items:center;gap:10px;box-sizing:border-box;width:100%;height:100%;padding:0 12px;color:inherit;text-decoration:none;border-radius:inherit}
 .ghp3-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--dsw-radius-md,8px);background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#4d6bfe) 12%,transparent);color:var(--dsw-alias-state-business-primary,#4d6bfe)}
 .ghp3-body{display:flex;flex-direction:column;flex:1;min-width:0;padding:8px 0}
 .ghp3-name{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:14px;font-weight:500;line-height:22px;color:var(--dsw-alias-label-primary)}
@@ -42,42 +43,34 @@ export const PENDING_CSS = `
 export function GitHubPendingCard(props: {
   card: IssueCardVM
   t: Translate
-  onOpenPanel(): void
   onRemove(): void
 }) {
-  const { card, t, onOpenPanel, onRemove } = props
+  const { card, t, onRemove } = props
   const ref = `${card.repo}#${String(card.number)}`
   const state = t(stateLabelKey(card.state))
   return (
     <div className="ghp3-rail" data-github-pending>
       <StyleSheet chunks={[CONTROLS_CSS, PENDING_CSS]} />
-      <div
-        className="ghp3-card"
-        role="button"
-        tabIndex={0}
-        aria-label={`${ref} · ${card.title}`}
-        title={`${ref} · ${card.title}\n${t('pending.tip')}`}
-        onClick={onOpenPanel}
-        onKeyDown={event => {
-          if (event.target !== event.currentTarget) return
-          if (event.key !== 'Enter' && event.key !== ' ') return
-          event.preventDefault()
-          onOpenPanel()
-        }}
-      >
-        <span className="ghp3-icon" aria-hidden="true"><GitHubIcon size={16} /></span>
-        <span className="ghp3-body">
-          <span className="ghp3-name">{ref}</span>
-          <span className="ghp3-meta">{state} · {card.title === '' ? t('pending.noTitle') : card.title}</span>
-        </span>
+      <div className="ghp3-card">
+        <a
+          className="ghp3-link"
+          href={card.url}
+          target="_blank"
+          rel="noreferrer noopener"
+          aria-label={`${ref} · ${card.title}`}
+          title={`${ref} · ${card.title}\n${t('pending.tip')}`}
+        >
+          <span className="ghp3-icon" aria-hidden="true"><GitHubIcon size={16} /></span>
+          <span className="ghp3-body">
+            <span className="ghp3-name">{ref}</span>
+            <span className="ghp3-meta">{state} · {card.title === '' ? t('pending.noTitle') : card.title}</span>
+          </span>
+        </a>
         <button
           type="button"
           className="ghp3-remove"
           aria-label={t('dock.removeDraft')}
-          onClick={event => {
-            event.stopPropagation()
-            onRemove()
-          }}
+          onClick={onRemove}
         >
           <CloseGlyph size={12} />
         </button>

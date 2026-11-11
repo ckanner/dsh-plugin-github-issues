@@ -14,7 +14,9 @@ import { DockHost, DropZoneHost, GitHubRailIcon, PageHost, PendingOverlayHost, S
 import type { ClientContext, ClientRuntime, SidebarRightTabsService } from './context.ts'
 import { DICTS, NS } from './locale.ts'
 import { remoteContribution } from './remote.ts'
+import { GITHUB_ISSUE_RULE } from './reference.ts'
 import { GitHubStore } from './store.ts'
+import { GitHubIssueReference } from './views/IssueReference.tsx'
 
 /** The `main` panel key and the `sidebar.panellist` id that addresses it. */
 const PANEL_ID = 'github'
@@ -109,6 +111,26 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ store, t }),
   }, DropZoneHost))
+
+  // Sent user text keeps a clickable issue reference: the prompt names the issue
+  // as owner/repo#number, and the conversation's UserText registry renders that
+  // token as the GitHub chip below. The service may mount after this plugin, so a
+  // dynamic inject keeps the registration order-free.
+  ctx.inject(['uiConversation'], scoped => {
+    const conversation = (scoped as unknown as {
+      uiConversation?: {
+        userText?: { register(rule: typeof GITHUB_ISSUE_RULE): () => void }
+      }
+    }).uiConversation
+    if (conversation?.userText === undefined) return
+    scoped.effect(() => conversation.userText!.register(GITHUB_ISSUE_RULE), 'github-issues: user-text rule')
+    scoped.slots.inject('conversation.user.text.node', () => scoped.slots.register({
+      name: 'conversation.user.text.node',
+      key: 'github-issue',
+      priority: 100,
+      locale: NS,
+    }, GitHubIssueReference))
+  })
 
   // The right sidebar may be absent from a profile; registering its page type
   // inside a dynamic inject scope keeps the panel independent from it.

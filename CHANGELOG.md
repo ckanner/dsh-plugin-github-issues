@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.2 (2026-10-29)
+
+- Typing a slash command or a skill reference after the pending card now works:
+  the invisible draft marker ends with a regular space, so the trigger token is
+  preceded by whitespace instead of being glued to a non-whitespace marker.
+- The composer card is a real link to the issue (opens the issue URL), not a panel
+  navigation; the remove control stays a sibling so it never triggers the link.
+- Sent user text keeps a clickable issue reference: a UserText rule matches
+  `owner/repo#number` (the prompt's own heading) and renders a GitHub chip in the
+  transcript. Both the composer card and the transcript chip open the issue URL;
+  the metadata table stays a real table.
+
 ## 0.8.1 (2026-10-29)
 
 - Typing in the composer no longer removes the pending issue card. The invisible
