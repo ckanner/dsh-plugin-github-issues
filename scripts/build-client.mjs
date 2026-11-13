@@ -36,6 +36,7 @@ const outFile = join(root, 'lib', 'client.js')
  */
 const EXTERNAL = [
   'react',
+  'react-dom',
   'react/jsx-runtime',
 ]
 

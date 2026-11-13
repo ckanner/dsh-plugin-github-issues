@@ -24,7 +24,7 @@ const require = createRequire(import.meta.url)
 const packageName = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).name
 
 /** The module-table specifiers the loader answers for this bundle. */
-const EXTERNAL = ['react', 'react/jsx-runtime']
+const EXTERNAL = ['react', 'react-dom', 'react/jsx-runtime']
 
 const result = await build({
   entryPoints: [join(root, 'src', 'client', 'index.tsx')],
@@ -55,6 +55,7 @@ const registrations = []
 /** Stand-ins for the module table, so the bundle's requires resolve. */
 const table = {
   react: require('react'),
+  'react-dom': require('react-dom'),
   'react/jsx-runtime': require('react/jsx-runtime'),
 }
 

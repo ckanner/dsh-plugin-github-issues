@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.7 (2026-10-29)
+
+- The composer-dock issue popover is now portaled to `document.body`. The
+  conversation shell gives the composer its own compositor layer, so a
+  `position: fixed` popover inside it was positioned against that transformed
+  ancestor instead of the viewport and appeared far from the chip. With the
+  portal, the viewport coordinates measured from the chip put the popover
+  directly above it.
+
 ## 0.8.6 (2026-10-29)
 
 - The machine prompt is no longer shown in the transcript. `composeHandoffPrompt`

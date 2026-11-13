@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-github-issues",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "description": "Browse GitHub issues, milestones, labels, priority, and linked PR status inside DeepSeek Harness, and hand an issue to the agent by dragging it into the composer.",
   "keywords": [
     "dsh-plugin",
@@ -93,6 +93,7 @@
   "devDependencies": {
     "@types/node": "^22.20.5",
     "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "dompurify": "^3.4.17",
     "esbuild": "^0.25.12",
     "marked": "^18.1.2",

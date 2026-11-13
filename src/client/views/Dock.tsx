@@ -13,6 +13,8 @@
  */
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
+
 import type { Translate } from '../context.ts'
 import type { ComposerIssueChip, DockProps } from '../viewmodel.ts'
 import { Badge, Button, StyleSheet, TONE, CONTROLS_CSS } from './controls.tsx'
@@ -93,7 +95,12 @@ function ChipPopover(props: {
     }
   }, [onClose])
 
-  return (
+  // The composer keeps its own compositor layer (the shipped conversation shell
+  // documents this), so a `position:fixed` descendant would be laid out against
+  // that transformed ancestor, not the viewport. Portal the popover to the body
+  // so the viewport coordinates measured from the chip are actually viewport
+  // coordinates — the popover then sits directly above the chip.
+  return createPortal(
     <div className="ghd-pop" style={{ left: anchor.left, bottom: anchor.bottom }} role="dialog" aria-label={card.title}>
       <StyleSheet chunks={[CONTROLS_CSS, DOCK_CSS]} />
       <div className="ghd-pop-head">
@@ -150,7 +157,8 @@ function ChipPopover(props: {
           {chip.state === 'draft' ? t('dock.removeDraft') : t('dock.unlink')}
         </Button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
