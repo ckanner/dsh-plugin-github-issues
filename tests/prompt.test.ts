@@ -5,7 +5,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { composeHandoffPrompt, EMPTY_DRAFT_HOLD, PENDING_DRAFT_SENTINEL, renderPrompt } from '../src/prompt.ts'
+import {
+  composeHandoffPrompt, EMPTY_DRAFT_HOLD, PENDING_DRAFT_SENTINEL, PROMPT_BLOCK_END,
+  PROMPT_BLOCK_START, renderPrompt,
+} from '../src/prompt.ts'
 import { DEFAULT_PROMPT_TEMPLATE, mergePrefs, migratePromptTemplate, type IssueCardVM } from '../src/vm.ts'
 
 /** One field override; `undefined` is meaningful (it removes the value). */
@@ -146,8 +149,8 @@ test('the pending sentinel is invisible and never reaches the prompt', () => {
     assert.ok(invisible, `sentinel contains a visible character: ${JSON.stringify(char)}`)
   }
   const composed = composeHandoffPrompt('PROMPT', `${PENDING_DRAFT_SENTINEL}还有几句话`)
-  assert.equal(composed, 'PROMPT\n\n还有几句话')
-  assert.equal(composeHandoffPrompt('PROMPT', PENDING_DRAFT_SENTINEL), 'PROMPT')
+  assert.equal(composed, `${PROMPT_BLOCK_START}PROMPT${PROMPT_BLOCK_END}\n\n还有几句话`)
+  assert.equal(composeHandoffPrompt('PROMPT', PENDING_DRAFT_SENTINEL), `${PROMPT_BLOCK_START}PROMPT${PROMPT_BLOCK_END}`)
 })
 
 test('an empty template falls back to the built-in one', () => {
@@ -155,20 +158,23 @@ test('an empty template falls back to the built-in one', () => {
   assert.match(text, /处理 GitHub Issue/)
 })
 
-test('an empty composer sends only the card prompt', () => {
-  assert.equal(composeHandoffPrompt('ISSUE PROMPT', EMPTY_DRAFT_HOLD), 'ISSUE PROMPT')
+test('an empty composer sends only the bracketed card prompt', () => {
+  assert.equal(
+    composeHandoffPrompt('ISSUE PROMPT', EMPTY_DRAFT_HOLD),
+    `${PROMPT_BLOCK_START}ISSUE PROMPT${PROMPT_BLOCK_END}`,
+  )
 })
 
 test('the user text is appended after the prompt', () => {
   assert.equal(
     composeHandoffPrompt('ISSUE PROMPT', `${EMPTY_DRAFT_HOLD}先把测试跑一遍`),
-    'ISSUE PROMPT\n\n先把测试跑一遍',
+    `${PROMPT_BLOCK_START}ISSUE PROMPT${PROMPT_BLOCK_END}\n\n先把测试跑一遍`,
   )
 })
 
 test('surrounding blank lines and the placeholder are stripped', () => {
   assert.equal(
     composeHandoffPrompt('P', `\n\u200b\n  hello  \n\n`),
-    'P\n\nhello',
+    `${PROMPT_BLOCK_START}P${PROMPT_BLOCK_END}\n\nhello`,
   )
 })

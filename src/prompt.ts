@@ -88,6 +88,16 @@ export const PENDING_DRAFT_SENTINEL = '\u200a'
 export const EMPTY_DRAFT_HOLD = PENDING_DRAFT_SENTINEL
 
 /**
+ * Invisible brackets around the machine prompt in a sent message.
+ *
+ * The model still receives the whole prompt; the conversation's UserText rule
+ * consumes these brackets and renders only the issue card, leaving the user's own
+ * appended text visible after the closing bracket.
+ */
+export const PROMPT_BLOCK_START = '\u2063\u2063'
+export const PROMPT_BLOCK_END = '\u2063\u2064'
+
+/**
  * Compose the message a pending issue card sends.
  *
  * The card carries the issue prompt; the user's own words are optional and are
@@ -100,8 +110,9 @@ export const EMPTY_DRAFT_HOLD = PENDING_DRAFT_SENTINEL
 export function composeHandoffPrompt(prompt: string, memo: string): string {
   const extra = memo
     .split(PENDING_DRAFT_SENTINEL).join('')
-    .replace(/[\u200b\u200c\u200d\u2060\u2063\ufeff]/g, '')
+    .replace(/[\u200b\u200c\u200d\u2060\u2063\u2064\ufeff]/g, '')
     .replace(/^\n+/, '')
     .trim()
-  return extra === '' ? prompt : `${prompt}\n\n${extra}`
+  const block = `${PROMPT_BLOCK_START}${prompt}${PROMPT_BLOCK_END}`
+  return extra === '' ? block : `${block}\n\n${extra}`
 }

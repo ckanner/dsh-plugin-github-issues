@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.6 (2026-10-29)
+
+- The machine prompt is no longer shown in the transcript. `composeHandoffPrompt`
+  wraps it in invisible brackets; the model still receives the complete prompt
+  (heading, link, metadata table, requirement), while the UserText rule replaces
+  the bracketed block with only the issue card. The user's own appended text stays
+  visible after the closing bracket.
+- Messages sent before the brackets existed fall back to hiding the heading and
+  the known prompt tail through the requirement line, so their transcript also
+  collapses to the card plus the user text.
+
 ## 0.8.5 (2026-10-29)
 
 - Updated the default handoff prompt to the requested wording: the requirement

@@ -10,6 +10,7 @@
  * @module dsh-plugin-github-issues/client/reference
  */
 
+import { PROMPT_BLOCK_END, PROMPT_BLOCK_START } from '../prompt.ts'
 import type { GitHubIssueReferenceData } from './views/IssueReference.tsx'
 
 /** One UserText match for the handoff prompt heading. */
@@ -43,11 +44,71 @@ function stateOf(text: string): string | undefined {
   return legacy?.[1]?.trim()
 }
 
+/**
+ * Parse the issue data out of a prompt heading.
+ * @param text - prompt or whole message text.
+ * @param from - first offset to search.
+ * @returns the heading match and its parsed data.
+ */
+function headingAt(text: string, from: number): {
+  start: number
+  end: number
+  repo: string
+  number: number
+  title?: string
+} | undefined {
+  ISSUE_HEADING.lastIndex = from
+  for (let match = ISSUE_HEADING.exec(text); match !== null; match = ISSUE_HEADING.exec(text)) {
+    const repo = match[1]
+    const numberText = match[2]
+    if (repo === undefined || numberText === undefined) continue
+    const number = Number(numberText)
+    if (!Number.isInteger(number) || number <= 0) continue
+    const title = match[3]?.trim()
+    return {
+      start: match.index,
+      end: match.index + match[0].length,
+      repo,
+      number,
+      ...title === undefined || title === '' ? {} : { title },
+    }
+  }
+  return undefined
+}
+
 /** The UserText rule registered with the conversation service. */
 export const GITHUB_ISSUE_RULE: GitHubIssueReferenceRule = {
   id: 'github-issue',
   order: 40,
   match(text, from) {
+    // The normal path: prompts composed by composeHandoffPrompt carry invisible
+    // brackets around the whole machine block. Hide the block and show the card;
+    // the user's own appended text after the closing bracket stays visible.
+    const blockStart = text.indexOf(PROMPT_BLOCK_START, from)
+    if (blockStart >= 0) {
+      const blockEnd = text.indexOf(PROMPT_BLOCK_END, blockStart + PROMPT_BLOCK_START.length)
+      if (blockEnd > blockStart) {
+        const inner = text.slice(blockStart + PROMPT_BLOCK_START.length, blockEnd)
+        const heading = headingAt(inner, 0)
+        if (heading !== undefined) {
+          const state = stateOf(inner)
+          return {
+            id: 'github-issue',
+            start: blockStart,
+            end: blockEnd + PROMPT_BLOCK_END.length,
+            data: {
+              repo: heading.repo,
+              number: heading.number,
+              url: `https://github.com/${heading.repo}/issues/${String(heading.number)}`,
+              ...heading.title === undefined ? {} : { title: heading.title },
+              ...state === undefined || state === '' ? {} : { state },
+            },
+          }
+        }
+      }
+    }
+    // Fallback for messages sent before the brackets existed: hide the heading
+    // and the known prompt tail through its requirement line.
     ISSUE_HEADING.lastIndex = from
     for (let match = ISSUE_HEADING.exec(text); match !== null; match = ISSUE_HEADING.exec(text)) {
       // Only a real prompt heading at a line start. The handoff draft starts with
@@ -61,10 +122,14 @@ export const GITHUB_ISSUE_RULE: GitHubIssueReferenceRule = {
       if (!Number.isInteger(number) || number <= 0) continue
       const title = match[3]?.trim()
       const state = stateOf(text)
+      let end = match.index + match[0].length
+      const tail = text.slice(end)
+      const requirement = /\n+要求：[^\n]*/u.exec(tail)
+      if (requirement !== null) end += requirement.index + requirement[0].length
       return {
         id: 'github-issue',
         start: match.index,
-        end: match.index + match[0].length,
+        end,
         data: {
           repo,
           number,

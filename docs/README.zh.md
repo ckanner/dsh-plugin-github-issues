@@ -107,8 +107,9 @@ dsh plugin --profile <name> add /path/to/dsh-plugin-github-issues
 - 列表使用仓库的 `issues` 连接，状态、assignee、里程碑都由 GitHub 服务端过滤（总数也是权威的）；
   里程碑通过 `filterBy.milestoneNumber` 按编号过滤。
 - 详情展示完整正文（不是摘要、也不再限制在固定高度的小框里），按 Markdown 渲染并过滤危险 HTML。
-- 默认交接提示词把 Issue 元信息排成 Markdown 表格，发送后在对话里会渲染成真正的表格；旧版没有表格的
-  提示词会在加载时自动升级一次，也可以在设置里点「恢复默认」重新套用。
+- 交接提示词外面包了不可见的展示括号：模型会收到完整 prompt（含 Markdown 表格），对话里只显示
+  Issue 卡片和用户补充的文字；旧版没有表格的提示词会在加载时自动升级一次，也可以在设置里点
+  「恢复默认」重新套用。
 - 卡片标记是一个 hair space（Unicode 空白字符）：卡片后面输入 `/命令` 或 `@引用` 时前面天然有空白，
   输入触发管线和命令的 leading guard 都能工作；因为它本身是空白，也不会在打字时累积成可见缩进。
   输入框卡片和发送后的消息卡片都会打开 Issue 网址。
