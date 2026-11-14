@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.8 (2026-11-14)
+
+- Correct Cordis and Schemastery peer ranges to their actual library versions.
+  Use npm-compatible Typert prerelease ranges and cover the supported peer tuples.
+- Pin the release toolchain and publish the same packed tarball attached to the release.
+
 ## 0.8.7 (2026-10-29)
 
 - The composer-dock issue popover is now portaled to `document.body`. The

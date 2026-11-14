@@ -1,5 +1,8 @@
 # dsh-plugin-github-issues
 
+宿主 peer 使用 Cordis 4.0.x／4.1.x 与 Schemastery 3.19.x；这些库的版本独立于 DSH 0.2 的版本号。npm 会在提供 peer 时核对相应范围。 Typert peer 按 npm 的标准 SemVer 显式支持已测试的 0.2.1-rc.5 与 0.2.2 预发布系列。
+
+
 [English](../README.md) | 中文
 
 [![ci](https://github.com/ckanner/dsh-plugin-github-issues/actions/workflows/ci.yml/badge.svg)](https://github.com/ckanner/dsh-plugin-github-issues/actions/workflows/ci.yml)

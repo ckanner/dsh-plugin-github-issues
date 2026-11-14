@@ -35,18 +35,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
+          node-version: '24.22.1'
           registry-url: https://registry.npmjs.org
 
       - name: Use an npm that knows trusted publishing
-        # Node 22 bundles npm 10, which has no OIDC exchange: with no token it
-        # stops at ENEEDAUTH. Trusted publishing needs npm 11.5 or later.
+        # Pin a Node/npm pair that supports OIDC; npm latest may require a newer Node.
         run: |
-          npm install --global npm@latest
+          npm install --global npm@12.2.1 --ignore-scripts
           node --version
           npm --version
 
-      - run: npm install --ignore-scripts
+      - run: npm ci --ignore-scripts
 
       - name: Type check
         run: npm run typecheck
@@ -77,14 +76,46 @@ jobs:
           echo "VERSION=$version" >> "$GITHUB_ENV"
           echo "Releasing dsh-plugin-github-issues@$version"
 
-      - name: Ask the registry whether this version exists yet
-        id: registry
+      - name: Pack the checked build once
         run: |
-          if npm view "dsh-plugin-github-issues@$VERSION" version >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
+          mkdir -p "$RUNNER_TEMP/issues-release"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/issues-release"
+          mv "$RUNNER_TEMP/issues-release/dsh-plugin-github-issues-$VERSION.tgz" "$RUNNER_TEMP/dsh-plugin-github-issues.tgz"
+
+      - name: Verify registry identity before publication
+        id: registry
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/registry-read.npmrc
+        run: |
+          : > "$NPM_CONFIG_USERCONFIG"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          import { spawnSync } from 'node:child_process';
+          import semver from 'semver';
+          const name = 'dsh-plugin-github-issues', version = process.env.VERSION;
+          const bytes = fs.readFileSync(process.env.RUNNER_TEMP + '/dsh-plugin-github-issues.tgz');
+          const integrity = 'sha512-' + crypto.createHash('sha512').update(bytes).digest('base64');
+          const view = (spec, field) => {
+            const r = spawnSync('npm', ['view', spec, field, '--json', '--prefer-online'], { encoding: 'utf8', timeout: 60000 });
+            if (r.error || r.signal) throw new Error('Registry query did not settle');
+            if (r.status !== 0) {
+              const absent = [r.stdout, r.stderr].some(text => { try { return JSON.parse(text).error?.code === 'E404' } catch { return false } });
+              if (absent) return null;
+              throw new Error('Registry query failed; do not treat authentication/network errors as absence');
+            }
+            let value = JSON.parse(r.stdout);
+            if (Array.isArray(value) && value.length === 1) value = value[0];
+            if (typeof value !== 'string') throw new Error('Invalid registry value');
+            return value;
+          };
+          const existing = view(name + '@' + version, 'dist.integrity');
+          if (existing !== null && existing !== integrity) throw new Error('Published bytes differ; never overwrite or relabel the version');
+          const latest = view(name, 'dist-tags.latest');
+          if (latest !== null && (!semver.valid(latest) || semver.gt(latest, version))) throw new Error('Refusing to downgrade or reinterpret latest');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `published=${existing !== null}\n`);
+          fs.appendFileSync(process.env.GITHUB_ENV, `RELEASE_INTEGRITY=${integrity}\n`);
+          NODE
 
       - name: Choose the publishing credential
         # Decided from the secret itself in a shell step. setup-node exports a
@@ -106,7 +137,7 @@ jobs:
         if: steps.registry.outputs.published == 'false' && steps.credential.outputs.mode == 'token'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        run: npm publish "$RUNNER_TEMP/dsh-plugin-github-issues.tgz" --ignore-scripts --access public --provenance
 
       - name: Publish through npm trusted publishing
         # No secret: npm exchanges the id-token for a credential scoped to this
@@ -121,7 +152,7 @@ jobs:
           NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/trusted-publishing.npmrc
         run: |
           : > "$NPM_CONFIG_USERCONFIG"
-          npm publish --access public --provenance
+          npm publish "$RUNNER_TEMP/dsh-plugin-github-issues.tgz" --ignore-scripts --access public --provenance
 
       - name: Record a version that was published by hand
         if: steps.registry.outputs.published == 'true'
@@ -129,22 +160,39 @@ jobs:
           echo "dsh-plugin-github-issues@$VERSION is already on the registry." >> "$GITHUB_STEP_SUMMARY"
           echo "This run records its GitHub Release and publishes nothing." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Pack the tarball the Release carries
-        # The asset keeps a version-free name so `releases/latest/download/…` is a
-        # stable address for the current build, as the install notes promise.
+      - name: Verify the accepted registry tarball
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/registry-read.npmrc
         run: |
-          npm pack
-          mv dsh-plugin-github-issues-*.tgz dsh-plugin-github-issues.tgz
+          node --input-type=module <<'NODE'
+          import { spawnSync } from 'node:child_process';
+          import { setTimeout as wait } from 'node:timers/promises';
+          const deadline = Date.now() + 600000;
+          for (;;) {
+            const r = spawnSync('npm', ['view', 'dsh-plugin-github-issues@' + process.env.VERSION, 'dist.integrity', '--json', '--prefer-online', '--fetch-timeout=20000', '--fetch-retries=0'], { encoding: 'utf8', timeout: 25000 });
+            if (r.error || r.signal) throw new Error('Registry verification did not settle');
+            if (r.status === 0) {
+              let value = JSON.parse(r.stdout);
+              if (Array.isArray(value) && value.length === 1) value = value[0];
+              if (value !== process.env.RELEASE_INTEGRITY) throw new Error('Registry integrity differs from the checked tarball');
+              break;
+            }
+            const absent = [r.stdout, r.stderr].some(text => { try { return JSON.parse(text).error?.code === 'E404' } catch { return false } });
+            if (!absent) throw new Error('Registry verification failed');
+            if (Date.now() >= deadline) throw new Error('Registry visibility deadline reached; retain this tarball for recovery');
+            await wait(10000);
+          }
+          NODE
 
       - name: Create or update the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "v$VERSION" >/dev/null 2>&1; then
-            gh release upload "v$VERSION" dsh-plugin-github-issues.tgz --clobber
+            gh release upload "v$VERSION" "$RUNNER_TEMP/dsh-plugin-github-issues.tgz" --clobber
           else
             gh release create "v$VERSION" \
               --title "v$VERSION" \
               --generate-notes \
-              dsh-plugin-github-issues.tgz
+              "$RUNNER_TEMP/dsh-plugin-github-issues.tgz"
           fi
