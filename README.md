@@ -1,5 +1,8 @@
 # dsh-plugin-github-issues
 
+Host peers: Cordis 4.0.x / 4.1.x and Schemastery 3.19.x; their versions are independent of the DSH 0.2 host version. npm validates these ranges when peers are supplied. The Typert peer explicitly accepts the tested 0.2.1-rc.5 and 0.2.2 prerelease lines using standard npm SemVer.
+
+
 English | [中文](docs/README.zh.md)
 
 [![ci](https://github.com/ckanner/dsh-plugin-github-issues/actions/workflows/ci.yml/badge.svg)](https://github.com/ckanner/dsh-plugin-github-issues/actions/workflows/ci.yml)

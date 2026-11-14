@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-github-issues",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "description": "Browse GitHub issues, milestones, labels, priority, and linked PR status inside DeepSeek Harness, and hand an issue to the agent by dragging it into the composer.",
   "keywords": [
     "dsh-plugin",
@@ -75,9 +75,9 @@
     "check": "npm run typecheck && npm test && npm run test:render && npm run build && npm run verify:client && npm run verify:package"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0 || >=0.2.0-rc.1 <0.3.0",
-    "@deepseek-ai/dsh-typert-protocol": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0 || >=0.2.0-rc.1 <0.3.0",
-    "@deepseek-ai/schemastery": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0 || >=0.2.0-rc.1 <0.3.0"
+    "@deepseek-ai/cordis": "~4.0.5 || ~4.1.0",
+    "@deepseek-ai/dsh-typert-protocol": "^0.2.1-rc.5 || ^0.2.2-0",
+    "@deepseek-ai/schemastery": "~3.19.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -99,6 +99,7 @@
     "marked": "^18.1.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "semver": "7.7.3"
   }
 }
