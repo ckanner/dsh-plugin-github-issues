@@ -9,7 +9,7 @@ test('host library peers accept real DSH dependency tuples without borrowing the
   for (const [name, supported, rejected] of [
     ['@deepseek-ai/cordis', ['4.0.5', '4.0.9', '4.1.0'], ['0.2.2', '4.2.0', '5.0.0']],
     ['@deepseek-ai/schemastery', ['3.19.0', '3.19.2'], ['0.2.2', '3.20.0', '4.0.0']],
-    ['@deepseek-ai/dsh-typert-protocol', ['0.2.1-rc.5', '0.2.2-rc.3', '0.2.2-rc.99'], ['0.2.1-rc.4', '0.3.0', '1.0.0']],
+    ['@deepseek-ai/dsh-typert-protocol', ['0.2.1-rc.5', '0.2.2-rc.3', '0.2.2-rc.99', '0.3.0-rc.1', '0.3.0', '0.3.7'], ['0.2.1-rc.4', '0.3.7-rc.1', '0.4.0-0', '1.0.0']],
   ] as const) {
     for (const version of supported) assert.equal(semver.satisfies(version, manifest.peerDependencies[name]), true, `${name}@${version}`)
     for (const version of rejected) assert.equal(semver.satisfies(version, manifest.peerDependencies[name]), false, `${name}@${version}`)
