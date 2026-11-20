@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.9
+
+- Accept the DSH 0.2.1-rc.5 through 0.3 compatibility window for the Typert
+  peer. Required capability checks remain fail-closed.
+
 ## 0.8.8 (2026-11-14)
 
 - Correct Cordis and Schemastery peer ranges to their actual library versions.
